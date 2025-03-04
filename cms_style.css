@@ -1,0 +1,211 @@
+    body
+    {
+        background-color: rgb(231, 232, 231);
+    }
+
+    header 
+    {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        background-color: rgb(44, 100, 133);
+    }
+
+    .logo
+    {
+        float: left;
+        width: 50px;
+        height: 50px;
+        margin-left: 10px;
+        margin-top:5px;
+        margin-bottom: 5px;
+        
+    }
+
+    .logotext
+    {
+        float: left;
+        margin-left: 8px;
+        font-size: 25px;
+        color: white;
+        font-family: "Montserrat", sans-serif;
+        white-space: nowrap;
+    }
+
+/*=====================================================*/
+
+    .notification 
+    {
+        position: relative;
+        display: inline-block;
+    }
+
+    .bell 
+    {
+        float: right;
+        width: 35px;
+        height: 35px;
+        margin-right: 15px;
+        margin-bottom: 5px;
+        cursor: pointer;
+    }
+
+    .bmodal 
+    {
+        display: none;
+        position: absolute;
+        top: 100%;
+        right: 0;
+        background-color: #fff;
+        width: 250px;
+        border-top: 3px solid rgb(44, 100, 133);
+        border-radius: 10px;
+        box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 10px;
+        z-index: 10;
+    }
+
+    .message 
+    {
+        display: flex;
+        align-items: center;
+        padding: 5px;
+        margin-bottom: 3px;
+    }
+
+    .avatar 
+    {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        margin-right: 10px;
+    }
+
+    .message-box 
+    {
+        flex-grow: 1;
+        background-color: rgb(231, 232, 231);
+        border-radius: 10px;
+        padding: 8px;
+        width: 100%;
+    }
+
+    .message h2 
+    {
+        color: rgb(44, 100, 133);
+        font-family: "Montserrat", sans-serif;
+        font-size: 14px;
+        margin: 0;
+    }
+
+    .message p 
+    {
+        margin: 2px 0 0;
+        font-family: "Nunito";
+        font-size: 12px;
+        color: #333;
+    }
+
+    .notification:hover .bmodal 
+    {
+        display: block;
+    }
+
+/*=====================================================*/
+
+    .account
+    {
+        float: right;
+        background-color: white;
+        border-radius: 30px;
+        width: 275px;
+        height: 50px;
+        margin-top:8px;
+        margin-bottom: 8px;
+        margin-right: 8px;
+        position: relative;
+    }
+
+    .account img
+    {
+        float: left;
+        width: 45px;
+        height: 45px;
+        margin-left: 4px;
+        margin-top:3px;
+        margin-bottom: 3px;
+    }
+
+    .actext
+    {
+        float: left;
+        margin-left: 8px;
+        margin-right: 6px;
+        font-size: 20px;
+        color: rgb(44, 100, 133);
+        font-family: "Nunito";
+    }
+
+    .account .modal 
+    {
+        display: none;
+        position: absolute;
+        top: 100%; 
+        left: 0;
+        background-color: #fff;
+        font-family: "Nunito";
+        width: 200px;
+        border-top: 3px solid rgb(44, 100, 133);
+        border-radius: 10px;
+        box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 10px;
+        z-index: 10;
+    }
+
+    .account .modal a
+    {
+        display: block;
+        padding: 10px;
+        text-align: center;
+        color: rgb(44, 100, 133);
+        font-size: 16px;
+        text-decoration: none;
+        margin: 5px 0;
+        border-radius: 5px;
+        background-color: rgb(231, 232, 231);
+        cursor: pointer;
+    }
+
+    .account .modal a:hover
+    {
+        background-color: rgb(44, 100, 133);
+        color: white;
+    }
+
+    .account:hover .modal 
+    {
+        display: block;
+    }
+
+/*=====================================================*/
+
+    @media screen and (max-width: 600px) 
+    {        
+        .account {
+            width: 53px;  
+            margin-top:8px;
+            margin-bottom: 8px;
+            margin-right: 8px; 
+        }
+        .actext {
+            display: none;
+        }
+    }
+
+    @media screen and (max-width: 400px) 
+    {
+        .logotext{
+            display: none;
+        }
+    }
