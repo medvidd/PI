@@ -1,15 +1,21 @@
     body
     {
         background-color: rgb(231, 232, 231);
+        display: flex;
+        flex-direction: column;
+        margin: 0%;
+        font-family: "Nunito";
     }
 
     header 
     {
+        position: fixed;
         display: flex;
         justify-content: space-between;
         align-items: center;
         width: 100%;
         background-color: rgb(44, 100, 133);
+        z-index: 10; 
     }
 
     .logo
@@ -190,6 +196,48 @@
 
 /*=====================================================*/
 
+    .navigation 
+    {
+        width: 150px;
+        background-color: rgb(44, 100, 133);
+        height: 100vh; 
+        overflow: auto;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        background-color: white;
+        align-items: center;
+        padding: 0;
+        position: fixed, ;
+        margin-top: 60px;
+        
+    }
+
+    .navigation .nav-items a
+    {
+        padding: 0;
+    }
+
+    .navigation .nav-items h2 
+    {
+        padding: 3px 5px;
+        color: rgb(44, 100, 133);
+        cursor: pointer;
+    }
+
+    .navigation .nav-items h2:hover 
+    {
+        background-color: rgb(143, 191, 218);
+        border-radius: 15px;
+        color: rgb(44, 100, 133);
+    }
+    
+/*=====================================================*/
+
+    
+
+/*=====================================================*/
+
     @media screen and (max-width: 600px) 
     {        
         .account {
@@ -207,5 +255,17 @@
     {
         .logotext{
             display: none;
+        }
+        
+    }
+
+    @media screen and (max-width: 450px)
+    {
+        .navigation{
+            border-right: 10px solid rgb(143, 191, 218);
+            width: 0px;
+        }
+        .navigation:hover{
+            width: 150px;
         }
     }
