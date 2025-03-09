@@ -200,7 +200,7 @@
     {
         width: 150px;
         background-color: rgb(44, 100, 133);
-        height: 100vh; 
+        height: 90vh; 
         overflow: auto;
         padding: 10px;
         display: flex;
@@ -216,7 +216,13 @@
     .navigation .nav-items a
     {
         padding: 0;
+        text-decoration: none;
     }
+    
+    .nav-items a:hover {
+        color: blue; /* Колір при наведенні */
+    }
+    
 
     .navigation .nav-items h2 
     {
