@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>StuManager</title>
     <link rel="stylesheet" href="cms_style.css">
+    <script src="script.js" defer></script>
     <link href="https://fonts.googleapis.com/css2?family=Hind:wght@300;400;500;600;700&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Nunito:ital,wght@0,200..1000;1,200..1000&family=Rubik:ital,wght@0,300..900;1,300..900&display=swap" rel="stylesheet">
     <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
@@ -25,39 +26,40 @@
             <div class="notification">
                 <a href="messages.html">
                     <img class="bell" src="images/bell1.png" alt="Messages">     
+                    <span class="notification-dot"></span>
                 </a>
                 
-            <div class="bmodal">
-                <div class="message">
-                    <img src="images/account.png" alt="User picture" class="avatar">
-                    <div class="message-box">
-                        <div class="message-content">
-                            <h2>Name Surname</h2>
-                            <p>New message received!</p>
+                <div class="bmodal">
+                    <div class="message">
+                        <img src="images/account.png" alt="User picture" class="avatar">
+                        <div class="message-box">
+                            <div class="message-content">
+                                <h2>Name Surname</h2>
+                                <p>New message received!</p>
+                            </div>
                         </div>
                     </div>
-                </div>
-                
-                <div class="message">
-                    <img src="images/account.png" alt="User picture" class="avatar">
-                    <div class="message-box">
-                        <div class="message-content">
-                            <h2>Name Surname</h2>
-                            <p>New message received!</p>
+                    
+                    <div class="message">
+                        <img src="images/account.png" alt="User picture" class="avatar">
+                        <div class="message-box">
+                            <div class="message-content">
+                                <h2>Name Surname</h2>
+                                <p>New message received!</p>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="message">
-                    <img src="images/account.png" alt="User picture" class="avatar">
-                    <div class="message-box">
-                        <div class="message-content">
-                            <h2>Name Surname</h2>
-                            <p>New message received!</p>
+                    <div class="message">
+                        <img src="images/account.png" alt="User picture" class="avatar">
+                        <div class="message-box">
+                            <div class="message-content">
+                                <h2>Name Surname</h2>
+                                <p>New message received!</p>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
                 
             </div>
 
@@ -88,34 +90,74 @@
             <div class="main-header">
                 <h1>Students</h1>
             </div>
-            <button class="button-add" title="Add students">
+            <button class="button-add" title="Add students" id="addbutton">
                 <i class="fas fa-plus"></i>
                 <span>Add student</span>
             </button>
-            <table id="studentTable">
-                <tr>
-                    <th><input type="checkbox"></th>
-                    <th>Group</th>
-                    <th>Name</th>
-                    <th>Gender</th>
-                    <th>Birthday</th>
-                    <th>Status</th>
-                    <th>Options</th>
-                </tr>
-                <tr>
-                    <td><input type="checkbox"></td>
-                    <td>PZ-50</td>
-                    <td>John Johnon</td>
-                    <td>Male</td>
-                    <td>10.02.1983</td>
-                    <td><i class="fa-solid fa-circle" style="color: #d6d6d6;"></i></td>
-                    <td>
-                        <button title="Edit student"><i class="fa-solid fa-pen-to-square" style="color: #2c6485;"></i></button>
-                        <button title="Delete student"><i class="fa-solid fa-trash" style="color: #2c6485;"></i></button>
-                    </td>
-                </tr>
-            </table>
+            <div class="tconteiner">
+                <table id="studentTable">
+                    <tr>
+                        <th><input type="checkbox" id="selectAll"></th>
+                        <th>Group</th>
+                        <th>Name</th>
+                        <th>Gender</th>
+                        <th>Birthday</th>
+                        <th>Status</th>
+                        <th>Options</th>
+                    </tr>
+                </table>
+            </div>
         </main>
+    </div>
+
+    <div class="modal-add" id="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add student</h2>
+                <span id="closeModal" class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="studentForm">
+                    <label for="group">Group</label>
+                    <select id="group" name="group">
+                        <option value="">Select Group</option>
+                        <option value="PZ-11">PZ-11</option>
+                        <option value="PZ-12">PZ-12</option>
+                        <option value="PZ-13">PZ-13</option>
+                        <option value="PZ-14">PZ-14</option>
+                        <option value="PZ-15">PZ-15</option>
+                        <option value="PZ-16">PZ-16</option>
+                        <option value="PZ-17">PZ-17</option>
+                        <option value="PZ-21">PZ-21</option>
+                        <option value="PZ-22">PZ-22</option>
+                        <option value="PZ-23">PZ-23</option>
+                        <option value="PZ-24">PZ-24</option>
+                        <option value="PZ-25">PZ-25</option>
+                        <option value="PZ-26">PZ-26</option>
+                    </select>
+
+                    <label for="firstName">First name</label>
+                    <input type="text" id="firstName" name="firstName">
+
+                    <label for="lastName">Last name</label>
+                    <input type="text" id="lastName" name="lastName">
+
+                    <label for="gender">Gender</label>
+                    <select id="gender" name="gender">
+                        <option value="">Select Gender</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                    </select>
+
+                    <label for="birthday">Birthday</label>
+                    <input type="date" id="birthday" name="birthday">
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="cancelBtn">Cancel</button>
+                <button type="button" id="createBtn">Create</button>
+            </div>
+        </div>
     </div>
     
     
