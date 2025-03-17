@@ -154,12 +154,77 @@
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" id="cancelBtn">Cancel</button>
-                <button type="button" id="createBtn">Create</button>
+                <button type="button" class="button-cancel" id="cancelBtn">Cancel</button>
+                <button type="button" class="button-create" id="createBtn">Create</button>
             </div>
         </div>
     </div>
     
+    <div class="modal-del" id="modalDel">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Warning!</h2>
+                <span id="closeDelModal" class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p id="deleteMessage"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="button-cancel" id="cancelDelBtn">Cancel</button>
+                <button type="button" class="button-create" id="confirmDelBtn">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-add" id="modalEdit">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit student</h2>
+                <span id="closeEditModal" class="close">×</span>
+            </div>
+            <div class="modal-body">
+                <form id="editStudentForm">
+                    <label for="editGroup">Group</label>
+                    <select id="editGroup" name="editGroup">
+                        <option value="">Select Group</option>
+                        <option value="PZ-11">PZ-11</option>
+                        <option value="PZ-12">PZ-12</option>
+                        <option value="PZ-13">PZ-13</option>
+                        <option value="PZ-14">PZ-14</option>
+                        <option value="PZ-15">PZ-15</option>
+                        <option value="PZ-16">PZ-16</option>
+                        <option value="PZ-17">PZ-17</option>
+                        <option value="PZ-21">PZ-21</option>
+                        <option value="PZ-22">PZ-22</option>
+                        <option value="PZ-23">PZ-23</option>
+                        <option value="PZ-24">PZ-24</option>
+                        <option value="PZ-25">PZ-25</option>
+                        <option value="PZ-26">PZ-26</option>
+                    </select>
+    
+                    <label for="editFirstName">First name</label>
+                    <input type="text" id="editFirstName" name="editFirstName">
+    
+                    <label for="editLastName">Last name</label>
+                    <input type="text" id="editLastName" name="editLastName">
+    
+                    <label for="editGender">Gender</label>
+                    <select id="editGender" name="editGender">
+                        <option value="">Select Gender</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                    </select>
+    
+                    <label for="editBirthday">Birthday</label>
+                    <input type="date" id="editBirthday" name="editBirthday">
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="button-cancel" id="cancelEditBtn">Cancel</button>
+                <button type="button" class="button-create" id="saveEditBtn">Save</button>
+            </div>
+        </div>
+    </div>
     
 </body>
 
