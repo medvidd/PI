@@ -1,3 +1,5 @@
+/* jshint esversion: 6 */
+
 document.getElementById('addbutton').addEventListener('click', function() 
 {
     document.getElementById('modal').style.display = 'flex';
@@ -63,8 +65,8 @@ document.getElementById('createBtn').addEventListener('click', function()
         <td>${birthday}</td>
         <td><i class="fa-solid fa-circle"></i></td>
         <td>
-            <button class="button-ed disabled" title="Edit student" disabled><i class="fa-solid fa-pen-to-square"></i></button>
-            <button class="button-ed disabled" title="Delete student" disabled><i class="fa-solid fa-trash"></i></button>
+            <button class="button-ed disabled" arial-label="Edit student" title="Edit student" disabled><i class="fa-solid fa-pen-to-square"></i></button>
+            <button class="button-ed disabled" arial-label="Delete student" title="Delete student" disabled><i class="fa-solid fa-trash"></i></button>
         </td>
     `;
 

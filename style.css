@@ -242,7 +242,6 @@
         width: 20%;
         height: 90vh; 
         overflow: auto;
-        padding: 10px;
         display: flex;
         flex-direction: column;
         background-color: white;
@@ -357,11 +356,6 @@
         display: table;
     }
 
-    .tconteiner
-    {
-        overflow-x: none;
-    }
-
     th, td 
     {
         padding: 8px;
@@ -411,12 +405,12 @@
         transform: none;
     }
 
-    #studentTable tr:nth-child(odd) .fa-circle {
-        color: rgb(44, 100, 133) !important; 
+    .tconteiner tr:nth-child(odd) .fa-circle {
+        color: rgb(44, 100, 133); 
     }
     
-    #studentTable tr:nth-child(even) .fa-circle {
-        color: #d6d6d6 !important; 
+    .tconteiner tr:nth-child(even) .fa-circle {
+        color: #d6d6d6; 
     }
 
 /*==========================================================================*/
@@ -475,7 +469,6 @@
     {
         display: flex;
         flex-direction: column;
-        gap: 15px;
     }
 
     .modal-body label 
@@ -498,7 +491,6 @@
     {
         display: flex;
         justify-content: flex-end;
-        gap: 10px;
         margin-top: 20px;
         padding-top: 8px;
         border-top: 2px solid rgb(44, 100, 133);
@@ -512,6 +504,7 @@
         cursor: pointer;
         font-family: "Montserrat";
         font-size: 16px;
+        margin-right: 10px;
     }
 
     .button-cancel 
