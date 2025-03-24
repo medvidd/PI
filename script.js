@@ -56,7 +56,7 @@ document.getElementById('createBtn').addEventListener('click', function()
     const table = document.getElementById('studentTable');
     const row = document.createElement('tr');
     row.innerHTML = `
-        <td><input type="checkbox" class="rowCheck"></td>
+        <td><input type="checkbox" class="rowCheck" title="Select student"></td>
         <td>${group}</td>
         <td>${firstName} ${lastName}</td>
         <td>${gender}</td>
@@ -112,18 +112,15 @@ table.addEventListener('click', function(e) {
             deleteModal.style.display = 'none';
         };
     } else if (target.querySelector('.fa-pen-to-square')) {
-        // Відкриваємо модальне вікно для редагування
         const editModal = document.getElementById('modalEdit');
         editModal.style.display = 'flex';
 
-        // Заповнюємо поля даними з рядка
         document.getElementById('editGroup').value = row.cells[1].textContent;
         document.getElementById('editFirstName').value = firstName;
         document.getElementById('editLastName').value = lastName;
         document.getElementById('editGender').value = row.cells[3].textContent;
         document.getElementById('editBirthday').value = row.cells[4].textContent;
 
-        // Закриття модального вікна
         document.getElementById('closeEditModal').onclick = function() {
             editModal.style.display = 'none';
         };
