@@ -5,12 +5,14 @@
         flex-direction: row;
         margin: 0%;
         font-family: "Nunito";
+        overflow-x: hidden;
     }
 
     header 
     {
         position: fixed;
         display: flex;
+        flex-wrap: wrap;
         justify-content: space-between;
         align-items: center;
         width: 100%;
@@ -235,12 +237,13 @@
     .wrapper{
         display: flex;
         width: 100%;
+        min-height: 100vh;
     }
 
     .navigation 
     {
         width: 20%;
-        height: 90vh; 
+        height: calc(100vh - 60px); 
         overflow: auto;
         display: flex;
         flex-direction: column;
@@ -251,7 +254,7 @@
         margin-top: 60px;
         box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.1); 
         z-index: 9; 
-        
+        transition: width 0.3s ease;        
     }
 
     .navigation .nav-items a
@@ -281,6 +284,18 @@
         border-radius: 15px;
         color: rgb(22, 71, 100);
     }
+
+    .nav-toggle {
+        display: none; 
+        background: none;
+        border: none;
+        font-size: 24px;
+        color: rgb(44, 100, 133);
+        cursor: pointer;
+        padding: 10px;
+        width: 100%;
+        text-align: left;
+    }
     
 /*==========================================================================*/
 
@@ -289,7 +304,8 @@
         margin-top: 60px;
         margin-left: 30px;
         margin-right: 30px;
-        width: 80%;
+        width: calc(80% - 60px);
+        transition: margin-left 0.3s ease, width 0.3s ease;
     }
     
     .main-header 
@@ -347,6 +363,7 @@
     table 
     {
         width: 100%;
+        min-width: 600px;
         border-collapse: collapse;
         background-color: white;
         border-radius: 15px;
@@ -438,6 +455,8 @@
         box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
         position: relative;
         font-family: "Nunito";
+        max-height: 80vh;
+        overflow-y: auto; 
     }
 
     .modal-header 
@@ -485,6 +504,7 @@
         border: 1px solid #ddd;
         border-radius: 5px;
         font-family: "Nunito";
+        box-sizing: border-box;
     }
 
     .modal-footer 
@@ -544,7 +564,12 @@
         z-index: 1000;
     }
 
-
+    .error-message {
+        color: red;
+        font-size: 10px; 
+        display: block;
+        margin-top: 5px;
+    }
 
 /*==========================================================================*/
 
@@ -564,8 +589,10 @@
         }
         .modal-add, .modal-del {
             padding: 10px;
-            align-items: flex-start; 
+            align-items: flex; 
             overflow-y: auto;
+            justify-content: center;
+            align-items: center;
         }
         .modal-content {
             width: 90%; 
@@ -628,15 +655,24 @@
 
     @media screen and (max-width: 750px)
     {
+        .wrapper{
+            flex-direction: row;
+        }
         .navigation{
             border-right: 15px solid rgb(143, 191, 218);
             width: 0px;
             position: fixed;
+            height: calc(100vh - 60px);
+            overflow: hidden;
         }
         .navigation:hover{
             width: 250px;
         }
+        .nav-toggle {
+            display: block;
+        }
         main{
             width: 100%;
+            margin-left: 15px;
         }
     }

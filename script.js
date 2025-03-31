@@ -17,6 +17,7 @@ document.getElementById('cancelBtn').addEventListener('click', function()
 
 const table = document.getElementById('studentTable');
 const selectAllCheckbox = document.getElementById('selectAll');
+let studentIdCounter = 1;
 
 function updateRowButtons(row, isChecked) {
     const buttons = row.querySelectorAll('.button-ed');
@@ -42,38 +43,96 @@ selectAllCheckbox.addEventListener('change', function() {
     });
 });
 
-document.getElementById('createBtn').addEventListener('click', function() 
-{
-    const group = document.getElementById('group').value;
-    const firstName = document.getElementById('firstName').value;
-    const lastName = document.getElementById('lastName').value;
-    const gender = document.getElementById('gender').value;
-    const birthday = document.getElementById('birthday').value;
+function checkField(field) {
+    let isGood = true;
+    let errorMessage = '';
 
-    if (!group || !firstName || !lastName || !gender || !birthday) {
-        alert('Please fill in all fields.');
-        return;
+    if (field.value == "") {
+        isGood = false;
+        errorMessage = 'This field cannot be empty';
+    }
+    else if ((field.id == 'firstName' || field.id == 'lastName' || 
+              field.id == 'editFirstName' || field.id == 'editLastName')) {
+        const value = field.value;
+        if (!/^[A-Za-zА-Яа-яҐґЄєІіЇї\-]+$/.test(value)) {
+            isGood = false;
+            errorMessage = 'Use only letters (English or Ukrainian) and hyphens';
+        }
+        else if (value.length < 2 || value.length > 30) {
+            isGood = false;
+            errorMessage = 'Must be between 2 and 30 characters';
+        }
+    }
+    else if ((field.id == 'birthday' || field.id == 'editBirthday') && field.value != "") {
+        const inputDate = new Date(field.value);
+        const currentDate = new Date();
+        const year = inputDate.getFullYear();
+
+        if (inputDate > currentDate) {
+            isGood = false;
+            errorMessage = 'Date cannot be in the future';
+        }
+        else if (year < 1900 || year > currentDate.getFullYear()) {
+            isGood = false;
+            errorMessage = 'Year must be between 1900 and ' + currentDate.getFullYear();
+        }
     }
 
-    const table = document.getElementById('studentTable');
-    const row = document.createElement('tr');
-    row.innerHTML = `
-        <td><input type="checkbox" class="rowCheck" title="Select student"></td>
-        <td>${group}</td>
-        <td>${firstName} ${lastName}</td>
-        <td>${gender}</td>
-        <td>${birthday}</td>
-        <td><i class="fa-solid fa-circle"></i></td>
-        <td>
-            <button class="button-ed disabled" arial-label="Edit student" title="Edit student" disabled><i class="fa-solid fa-pen-to-square"></i></button>
-            <button class="button-ed disabled" arial-label="Delete student" title="Delete student" disabled><i class="fa-solid fa-trash"></i></button>
-        </td>
-    `;
+    if (!isGood) {
+        field.style.border = "1px solid red";
+        let error = field.nextElementSibling;
+        if (!error || !error.classList.contains('error-message')) {
+            error = document.createElement('span');
+            error.className = 'error-message';
+            field.parentNode.insertBefore(error, field.nextSibling);
+        }
+        error.textContent = errorMessage;
+    } else {
+        field.style.border = "1px solid #ddd";
+        let error = field.nextElementSibling;
+        if (error && error.classList.contains('error-message')) {
+            error.remove();
+        }
+    }
+    return isGood;
+}
 
-    table.appendChild(row);
+document.getElementById('createBtn').addEventListener('click', function() 
+{
+    let group = document.getElementById('group');
+    let firstName = document.getElementById('firstName');
+    let lastName = document.getElementById('lastName');
+    let gender = document.getElementById('gender');
+    let birthday = document.getElementById('birthday');
 
-    document.getElementById('modal').style.display = 'none';
-    document.getElementById('studentForm').reset();
+    let allFieldsAreGood = checkField(group) && checkField(firstName) && checkField(lastName) && checkField(gender) && checkField(birthday);
+
+    if (allFieldsAreGood) {                      
+        const table = document.getElementById('studentTable');
+        const row = document.createElement('tr');
+        const studentId = studentIdCounter++;
+
+        row.innerHTML = `
+            <td><input type="checkbox" class="rowCheck" title="Select student"></td>
+            <td>${group.value}</td>
+            <td>${firstName.value} ${lastName.value}</td>
+            <td>${gender.value}</td>
+            <td>${birthday.value}</td>
+            <td><i class="fa-solid fa-circle"></i></td>
+            <td>
+                <button class="button-ed disabled" arial-label="Edit student" title="Edit student" disabled><i class="fa-solid fa-pen-to-square"></i></button>
+                <button class="button-ed disabled" arial-label="Delete student" title="Delete student" disabled><i class="fa-solid fa-trash"></i></button>
+            </td>
+            <td style="display: none;">${studentId}</td>
+        `;
+
+        table.appendChild(row);
+
+        document.getElementById('modal').style.display = 'none';
+        document.getElementById('studentForm').reset();
+
+        logStudentsData();
+    }
 });
 
 table.addEventListener('change', function(e) {
@@ -112,8 +171,10 @@ table.addEventListener('click', function(e) {
         document.getElementById('confirmDelBtn').onclick = function() {
             row.remove();
             deleteModal.style.display = 'none';
+            logStudentsData();
         };
-    } else if (target.querySelector('.fa-pen-to-square')) {
+    } 
+    else if (target.querySelector('.fa-pen-to-square')) {
         const editModal = document.getElementById('modalEdit');
         editModal.style.display = 'flex';
 
@@ -122,6 +183,9 @@ table.addEventListener('click', function(e) {
         document.getElementById('editLastName').value = lastName;
         document.getElementById('editGender').value = row.cells[3].textContent;
         document.getElementById('editBirthday').value = row.cells[4].textContent;
+
+        editModal.dataset.editingRow = row.rowIndex;
+        editModal.dataset.studentId = row.cells[7].textContent;
 
         document.getElementById('closeEditModal').onclick = function() {
             editModal.style.display = 'none';
@@ -132,6 +196,53 @@ table.addEventListener('click', function(e) {
         };
     }
 });
+
+document.getElementById('saveEditBtn').addEventListener('click', function() {
+    let group = document.getElementById('editGroup');
+    let firstName = document.getElementById('editFirstName');
+    let lastName = document.getElementById('editLastName');
+    let gender = document.getElementById('editGender');
+    let birthday = document.getElementById('editBirthday');
+
+    let allFieldsAreGood = checkField(group) && checkField(firstName) && 
+                          checkField(lastName) && checkField(gender) && 
+                          checkField(birthday);
+
+    if (allFieldsAreGood) {
+        const editModal = document.getElementById('modalEdit');
+        const rowIndex = editModal.dataset.editingRow;
+        const row = table.rows[rowIndex];
+
+        row.cells[1].textContent = group.value;
+        row.cells[2].textContent = `${firstName.value} ${lastName.value}`;
+        row.cells[3].textContent = gender.value;
+        row.cells[4].textContent = birthday.value;
+
+        document.getElementById('modalEdit').style.display = 'none';
+
+        logStudentsData();
+    }
+});
+
+function logStudentsData() {
+    const students = [];
+    const rows = table.getElementsByTagName('tr');
+
+    for (let i = 1; i < rows.length; i++) {
+        const cells = rows[i].cells;
+        const student = {
+            id: parseInt(cells[7].textContent),
+            group: cells[1].textContent,
+            name: cells[2].textContent,
+            gender: cells[3].textContent,
+            birthday: cells[4].textContent,
+            status: cells[5].innerHTML.includes('fa-circle') ? 'Active' : 'Inactive'
+        };
+        students.push(student);
+    }
+    
+    console.log(JSON.stringify(students, null, 2));
+}
 
 document.addEventListener('DOMContentLoaded', function () {
     const notification = document.querySelector('.notification');
@@ -150,4 +261,8 @@ document.addEventListener('DOMContentLoaded', function () {
             window.location.href = 'messages.html';
         }, 300);
     });
+});
+
+document.querySelector('.nav-toggle').addEventListener('click', function() {
+    document.querySelector('.navigation').classList.toggle('open');
 });
