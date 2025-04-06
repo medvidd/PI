@@ -1,10 +1,13 @@
 /* jshint esversion: 6 */
 
 if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/sw.js")
-      .then((reg) => console.log("Service Worker registered", reg))
-      .catch((err) => console.error("Service Worker registration failed", err));
-  }
+    window.addEventListener('load', () => {
+        navigator.serviceWorker
+            .register("/sw.js")
+            .then((reg) => console.log("Service Worker registered with scope:", reg.scope))
+            .catch((err) => console.error("Service Worker registration failed:", err));
+    });
+}
 
 document.getElementById('addbutton').addEventListener('click', function() 
 {
@@ -257,6 +260,8 @@ function logStudentsData() {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
+    loadStudentsFromStorage();
+
     const notification = document.querySelector('.notification');
     const bell = document.querySelector('.bell');
     const notificationDot = document.querySelector('.notification-dot');
@@ -274,3 +279,49 @@ document.addEventListener('DOMContentLoaded', function () {
         }, 300);
     });
 });
+
+function logStudentsData() {
+    const students = [];
+    const rows = table.getElementsByTagName('tr');
+
+    for (let i = 1; i < rows.length; i++) {
+        const cells = rows[i].cells;
+        const student = {
+            id: parseInt(cells[7].textContent),
+            group: cells[1].textContent,
+            name: cells[2].textContent,
+            gender: cells[3].textContent,
+            birthday: cells[4].textContent,
+            status: cells[5].innerHTML.includes('fa-circle') ? 'Active' : 'Inactive'
+        };
+        students.push(student);
+    }
+    
+    console.log(JSON.stringify(students, null, 2));
+    localStorage.setItem('students', JSON.stringify(students));
+}
+
+function loadStudentsFromStorage() {
+    const storedStudents = localStorage.getItem('students');
+    if (storedStudents) {
+        const students = JSON.parse(storedStudents);
+        students.forEach(student => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><input type="checkbox" class="rowCheck" title="Select student"></td>
+                <td>${student.group}</td>
+                <td>${student.name}</td>
+                <td>${student.gender}</td>
+                <td>${student.birthday}</td>
+                <td><i class="fa-solid fa-circle"></i></td>
+                <td>
+                    <button class="button-ed disabled" aria-label="Edit student" title="Edit student" disabled><i class="fa-solid fa-pen-to-square"></i></button>
+                    <button class="button-ed disabled" aria-label="Delete student" title="Delete student" disabled><i class="fa-solid fa-trash"></i></button>
+                </td>
+                <td style="display: none;">${student.id}</td>
+            `;
+            table.appendChild(row);
+            studentIdCounter = Math.max(studentIdCounter, student.id + 1);
+        });
+    }
+}

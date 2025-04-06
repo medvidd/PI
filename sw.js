@@ -1,4 +1,5 @@
 const CACHE_NAME = "pwa-cache-v1";
+const DYNAMIC_CACHE = "pwa-dynamic-v1";
 const ASSETS = [
     '/',
     '/index.html',
@@ -7,6 +8,7 @@ const ASSETS = [
     '/script.js',
     '/style.css',
     '/manifest.json',
+    '/sw.js',
     '/images/account.png',
     '/images/bell1.png',
     '/images/lg92px.png',
@@ -14,38 +16,51 @@ const ASSETS = [
     '/images/lg384px.png',
     '/images/lg512px.png',
     'https://fonts.googleapis.com/css2?family=Hind:wght@300;400;500;600;700&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Nunito:ital,wght@0,200..1000;1,200..1000&family=Rubik:ital,wght@0,300..900;1,300..900&display=swap',
-    'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css'
+    'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
 ];
 
-self.addEventListener('install', evt => {
-    evt.waitUntil(  
+self.addEventListener('install', (event) => {
+    event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
-          return cache.addAll(ASSETS);
+            console.log('Caching static assets');
+            return cache.addAll(ASSETS).catch((err) => {
+                console.error('Failed to cache assets:', err);
+            });
         })
-      );
+    );
+    self.skipWaiting(); 
 });
 
-self.addEventListener('fetch', evt => {
-    evt.respondWith(
-        cashes.match(evt.request).then(function(response) {
-            return response || fetch(evt.request); //.catch(function() {
-                /*return cashes.match('/offline.html');
-            })*/
-        })
-    )
-})
+self.addEventListener('fetch', (event) => {
+    event.respondWith(
+        caches.match(event.request).then((cachedResponse) => {
+            if (cachedResponse) {
+                return cachedResponse;
+            }
 
-self.addEventListener("activate", evt => {
-    evt.waitUntil(
-        caches.keys().then((keys) => {
-          return Promise.all(
-            keys
-              .filter((key) => key !== CACHE_NAME && key !== dynamicCash)
-              .map((key) => caches.delete(key))
-          );
+            return fetch(event.request).then((networkResponse) => {
+                if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+                    return networkResponse;
+                }
+
+                const responseToCache = networkResponse.clone();
+                caches.open(DYNAMIC_CACHE).then((cache) => {
+                    cache.put(event.request, responseToCache);
+                });
+                return networkResponse;
+            });
         })
-        .then(() => {
-          return self.clients.claim(); 
-        })
+    );
+});
+
+self.addEventListener('activate', (event) => {
+    event.waitUntil(
+        caches.keys().then((cacheNames) => {
+            return Promise.all(
+                cacheNames
+                    .filter((name) => name !== CACHE_NAME && name !== DYNAMIC_CACHE)
+                    .map((name) => caches.delete(name))
+            );
+        }).then(() => self.clients.claim())
     );
 });
