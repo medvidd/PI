@@ -3,7 +3,7 @@
 if ("serviceWorker" in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker
-            .register("/sw.js")
+            .register("/PI/sw.js")
             .then((reg) => console.log("Service Worker registered with scope:", reg.scope))
             .catch((err) => console.error("Service Worker registration failed:", err));
     });
@@ -238,26 +238,6 @@ document.getElementById('saveEditBtn').addEventListener('click', function() {
         logStudentsData();
     }
 });
-
-function logStudentsData() {
-    const students = [];
-    const rows = table.getElementsByTagName('tr');
-
-    for (let i = 1; i < rows.length; i++) {
-        const cells = rows[i].cells;
-        const student = {
-            id: parseInt(cells[7].textContent),
-            group: cells[1].textContent,
-            name: cells[2].textContent,
-            gender: cells[3].textContent,
-            birthday: cells[4].textContent,
-            status: cells[5].innerHTML.includes('fa-circle') ? 'Active' : 'Inactive'
-        };
-        students.push(student);
-    }
-    
-    console.log(JSON.stringify(students, null, 2));
-}
 
 document.addEventListener('DOMContentLoaded', function () {
     loadStudentsFromStorage();
