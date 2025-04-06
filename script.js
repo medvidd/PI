@@ -1,5 +1,11 @@
 /* jshint esversion: 6 */
 
+if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js")
+      .then((reg) => console.log("Service Worker registered", reg))
+      .catch((err) => console.error("Service Worker registration failed", err));
+  }
+
 document.getElementById('addbutton').addEventListener('click', function() 
 {
     document.getElementById('modal').style.display = 'flex';
@@ -8,11 +14,13 @@ document.getElementById('addbutton').addEventListener('click', function()
 document.getElementById('closeModal').addEventListener('click', function() 
 {
     document.getElementById('modal').style.display = 'none';
+    document.getElementById('studentForm').reset();
 });
 
 document.getElementById('cancelBtn').addEventListener('click', function() 
 {
     document.getElementById('modal').style.display = 'none';
+    document.getElementById('studentForm').reset();
 });
 
 const table = document.getElementById('studentTable');
@@ -47,23 +55,32 @@ function checkField(field) {
     let isGood = true;
     let errorMessage = '';
 
-    if (field.value == "") {
+    if (field.value === "") {
         isGood = false;
         errorMessage = 'This field cannot be empty';
     }
-    else if ((field.id == 'firstName' || field.id == 'lastName' || 
-              field.id == 'editFirstName' || field.id == 'editLastName')) {
+    else if ((field.id === 'firstName' || field.id === 'lastName' || 
+              field.id === 'editFirstName' || field.id === 'editLastName')) {
         const value = field.value;
-        if (!/^[A-Za-zА-Яа-яҐґЄєІіЇї\-]+$/.test(value)) {
+        
+        if (/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(value)) {
             isGood = false;
-            errorMessage = 'Use only letters (English or Ukrainian) and hyphens';
+            errorMessage = 'Please enter a name, not an email address';
+        }
+        else if (!/^[A-Za-zА-Яа-яҐґЄєІіЇї'\-]+$/.test(value)) {
+            isGood = false;
+            errorMessage = 'Use only letters (English or Ukrainian), apostrophes, or hyphens';
         }
         else if (value.length < 2 || value.length > 30) {
             isGood = false;
             errorMessage = 'Must be between 2 and 30 characters';
         }
+        else if (!/^[A-ZА-ЯҐЄІЇ][a-zа-яґєії']+(-[A-ZА-ЯҐЄІЇ][a-zа-яґєії']+)?$/.test(value)) {
+            isGood = false;
+            errorMessage = 'Use format: Name or Name-Name (first letter capitalized)';
+        }
     }
-    else if ((field.id == 'birthday' || field.id == 'editBirthday') && field.value != "") {
+    else if ((field.id === 'birthday' || field.id === 'editBirthday') && field.value !== "") {
         const inputDate = new Date(field.value);
         const currentDate = new Date();
         const year = inputDate.getFullYear();
@@ -97,42 +114,37 @@ function checkField(field) {
     return isGood;
 }
 
-document.getElementById('createBtn').addEventListener('click', function() 
-{
-    let group = document.getElementById('group');
-    let firstName = document.getElementById('firstName');
-    let lastName = document.getElementById('lastName');
-    let gender = document.getElementById('gender');
-    let birthday = document.getElementById('birthday');
+document.getElementById('studentForm').addEventListener('submit', function(e) {
+    e.preventDefault(); 
+    
+    const group = document.getElementById('group');
+    const firstName = document.getElementById('firstName');
+    const lastName = document.getElementById('lastName');
+    const gender = document.getElementById('gender');
+    const birthday = document.getElementById('birthday');
 
-    let allFieldsAreGood = checkField(group) && checkField(firstName) && checkField(lastName) && checkField(gender) && checkField(birthday);
+    const table = document.getElementById('studentTable');
+    const row = document.createElement('tr');
+    const studentId = studentIdCounter++;
+    
+    row.innerHTML = `
+        <td><input type="checkbox" class="rowCheck" title="Select student"></td>
+        <td>${group.value}</td>
+        <td>${firstName.value} ${lastName.value}</td>
+        <td>${gender.value}</td>
+        <td>${birthday.value}</td>
+        <td><i class="fa-solid fa-circle"></i></td>
+        <td>
+            <button class="button-ed disabled" arial-label="Edit student" title="Edit student" disabled><i class="fa-solid fa-pen-to-square"></i></button>
+            <button class="button-ed disabled" arial-label="Delete student" title="Delete student" disabled><i class="fa-solid fa-trash"></i></button>
+        </td>
+        <td style="display: none;">${studentId}</td>
+    `;
 
-    if (allFieldsAreGood) {                      
-        const table = document.getElementById('studentTable');
-        const row = document.createElement('tr');
-        const studentId = studentIdCounter++;
-
-        row.innerHTML = `
-            <td><input type="checkbox" class="rowCheck" title="Select student"></td>
-            <td>${group.value}</td>
-            <td>${firstName.value} ${lastName.value}</td>
-            <td>${gender.value}</td>
-            <td>${birthday.value}</td>
-            <td><i class="fa-solid fa-circle"></i></td>
-            <td>
-                <button class="button-ed disabled" arial-label="Edit student" title="Edit student" disabled><i class="fa-solid fa-pen-to-square"></i></button>
-                <button class="button-ed disabled" arial-label="Delete student" title="Delete student" disabled><i class="fa-solid fa-trash"></i></button>
-            </td>
-            <td style="display: none;">${studentId}</td>
-        `;
-
-        table.appendChild(row);
-
-        document.getElementById('modal').style.display = 'none';
-        document.getElementById('studentForm').reset();
-
-        logStudentsData();
-    }
+    table.appendChild(row);
+    document.getElementById('modal').style.display = 'none';
+    this.reset();
+    logStudentsData();
 });
 
 table.addEventListener('change', function(e) {
@@ -261,8 +273,4 @@ document.addEventListener('DOMContentLoaded', function () {
             window.location.href = 'messages.html';
         }, 300);
     });
-});
-
-document.querySelector('.nav-toggle').addEventListener('click', function() {
-    document.querySelector('.navigation').classList.toggle('open');
 });

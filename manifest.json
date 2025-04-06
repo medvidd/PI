@@ -1,0 +1,31 @@
+{
+    "name": "Student manager",
+    "short_name": "StuManager",
+    "start_url": "/index.html",
+    "display": "standalone",
+    "background_color": "#6b98b3",
+    "theme_color": "#2c6485",
+    "orientation": "portrait-primary",
+    "icons":[
+        {
+            "src": "/images/lg92px.png",
+            "type": "image/png",
+            "sizes": "92x92"
+        },
+        {
+            "src": "/images/lg144px.png",
+            "type": "image/png",
+            "sizes": "144x144"
+        },
+        {
+            "src": "/images/lg384px.png",
+            "type": "image/png",
+            "sizes": "384x384"
+        },
+        {
+            "src": "/images/lg512px.png",
+            "type": "image/png",
+            "sizes": "512x512"
+        }
+    ]
+}

@@ -4,10 +4,13 @@
 <head> 
     <meta charset="UTF-8">  
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2c6485">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>StuManager</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Hind:wght@300;400;500;600;700&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Nunito:ital,wght@0,200..1000;1,200..1000&family=Rubik:ital,wght@0,300..900;1,300..900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="manifest" href="/manifest.json">
 </head>
 
 <body>
@@ -121,7 +124,7 @@
             <div class="modal-body">
                 <form id="studentForm">
                     <label for="group">Group</label>
-                    <select id="group" name="group">
+                    <select id="group" name="group" required>
                         <option value="">Select Group</option>
                         <option value="PZ-11">PZ-11</option>
                         <option value="PZ-12">PZ-12</option>
@@ -139,25 +142,25 @@
                     </select>
 
                     <label for="firstName">First name</label>
-                    <input type="text" id="firstName" name="firstName">
+                    <input type="text" id="firstName" name="firstName" required pattern="[A-Za-zА-Яа-яҐґЄєІіЇї'\-]{2,30}" title="Use only letters (English or Ukrainian) and hyphens, 2-30 characters">
 
                     <label for="lastName">Last name</label>
-                    <input type="text" id="lastName" name="lastName">
+                    <input type="text" id="lastName" name="lastName" required pattern="[A-Za-zА-Яа-яҐґЄєІіЇї'\-]{2,30}" title="Use only letters (English or Ukrainian) and hyphens, 2-30 characters">
 
                     <label for="gender">Gender</label>
-                    <select id="gender" name="gender">
+                    <select id="gender" name="gender" required>
                         <option value="">Select Gender</option>
                         <option value="Male">Male</option>
                         <option value="Female">Female</option>
                     </select>
 
                     <label for="birthday">Birthday</label>
-                    <input type="date" id="birthday" name="birthday">
+                    <input type="date" id="birthday" name="birthday" required min="1900-01-01" max="2025-03-31">
                 </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="button-cancel" id="cancelBtn">Cancel</button>
-                <button type="button" class="button-create" id="createBtn">Create</button>
+                <button type="submit" form="studentForm" class="button-create" id="createBtn">Create</button>
             </div>
         </div>
     </div>
