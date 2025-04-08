@@ -67,6 +67,15 @@ function checkField(field) {
         const value = field.value;
         
         if (/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(value)) {
+            if (/^\.[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(value))
+            {
+                alert("You can't use . at the start of email");
+            }
+            else if (/^[a-zA-Z0-9._%+-]+@lpnu\.ua$/.test(value)) {
+                console.log("Politechnic");
+                alert("Привіт, друже Політехніку!");
+            }
+            
             isGood = false;
             errorMessage = 'Please enter a name, not an email address';
         }
@@ -240,6 +249,7 @@ document.getElementById('saveEditBtn').addEventListener('click', function() {
 });
 
 document.addEventListener('DOMContentLoaded', function () {
+    console.log("Hello!")
     loadStudentsFromStorage();
 
     const notification = document.querySelector('.notification');
