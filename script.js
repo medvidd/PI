@@ -75,7 +75,6 @@ function checkField(field) {
                 console.log("Politechnic");
                 alert("Привіт, друже Політехніку!");
             }
-            
             isGood = false;
             errorMessage = 'Please enter a name, not an email address';
         }
