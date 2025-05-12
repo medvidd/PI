@@ -232,6 +232,102 @@
         display: block;
     }
 
+    /*=========================================*/
+
+    .autorization
+    {
+        float: right;
+        background-color: white;
+        border-radius: 30px;
+        width: 275px;
+        height: 50px;
+        margin-top:8px;
+        margin-bottom: 8px;
+        margin-right: 8px;
+        margin-left:10px;
+        position: relative;
+        cursor: pointer;
+    }
+
+    .autorization img
+    {
+        float: left;
+        width: 45px;
+        height: 45px;
+        margin-left: 4px;
+        margin-top:3px;
+        margin-bottom: 3px;
+    }
+
+    .modal-login {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+    
+    .modal-content {
+        background: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        width: 90%;
+        max-width: 500px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+    
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .close {
+        cursor: pointer;
+        font-size: 24px;
+    }
+    
+    .modal-body {
+        margin: 20px 0;
+    }
+    
+    .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+    }
+    
+    .error-message {
+        color: red;
+        font-size: 12px;
+    }
+    
+    .button-login {
+        padding: 10px 20px;
+        background: #2c3e50;
+        color: #fff;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+
+    .modal-body input[type="password"] {
+        padding-right: 40px;
+    }
+
+    #togglePassword i {
+        color: rgb(44, 100, 133);
+    }
+
+    #togglePassword i.fa-eye-slash {
+        color: #95a5a6;
+    }
+
 /*==========================================================================*/
 
     .wrapper{
@@ -356,7 +452,39 @@
         color: rgb(44, 100, 133);
     }
 
+    .status-active {
+        color: rgb(44, 100, 133); 
+    }
 
+    .status-inactive {
+        color: #bfc7c8;
+    }
+
+    .pagination {
+        display: flex;
+        justify-content: center;
+        margin-top: 20px;
+    }
+
+    .pagination button {
+        padding: 8px 12px;
+        margin: 0 5px;
+        border: none;
+        border-radius: 5px;
+        background-color: rgb(44, 100, 133);
+        color: white;
+        cursor: pointer;
+        font-family: "Nunito";
+    }
+
+    .pagination button:disabled {
+        background-color: #ddd;
+        cursor: not-allowed;
+    }
+
+    .pagination button:hover:not(:disabled) {
+        background-color: rgb(143, 191, 218);
+    }
 
 /*==========================================================================*/
 
@@ -420,14 +548,6 @@
     .button-ed.disabled:hover
     {
         transform: none;
-    }
-
-    .tconteiner tr:nth-child(odd) .fa-circle {
-        color: rgb(44, 100, 133); 
-    }
-    
-    .tconteiner tr:nth-child(even) .fa-circle {
-        color: #d6d6d6; 
     }
 
 /*==========================================================================*/
