@@ -9,6 +9,8 @@ const io = require('socket.io')(http, {
 });
 const cors = require('cors');
 const mysql = require('mysql2/promise');
+const mongoose = require('mongoose');
+const Message = require('./models/Message');
 
 app.use(cors()); // Дозволити CORS для всіх HTTP запитів
 app.use(express.json());
@@ -21,6 +23,21 @@ const dbConfig = {
 };
 
 const pool = mysql.createPool(dbConfig);
+
+// MongoDB підключення
+mongoose.connect('mongodb://127.0.0.1:27017/stumanager_chat')
+    .then(() => {
+        console.log('MongoDB підключено успішно');
+        // Створюємо індекси для оптимізації пошуку
+        const Message = mongoose.model('Message');
+        return Message.createIndexes();
+    })
+    .then(() => {
+        console.log('MongoDB індекси створено');
+    })
+    .catch((err) => {
+        console.error('Помилка підключення до MongoDB:', err);
+    });
 
 const activeUsers = new Map(); // socket.id -> { username, userId }
 const userSockets = new Map(); // userId -> Set of socket.ids (один користувач може мати кілька вкладок)
@@ -127,6 +144,7 @@ async function createGroupChat(name, memberIds) {
 
 async function saveMessage(senderId, recipientId, message, groupChatId = null) {
     try {
+        // Зберігаємо в MySQL
         const [result] = await pool.query(
             'INSERT INTO messages (sender_id, recipient_id, group_chat_id, message, timestamp) VALUES (?, ?, ?, ?, NOW())',
             [senderId, recipientId, groupChatId, message]
@@ -142,6 +160,21 @@ async function saveMessage(senderId, recipientId, message, groupChatId = null) {
              WHERE m.id = ?`,
             [result.insertId]
         );
+
+        // Зберігаємо в MongoDB
+        const mongoMessage = new Message({
+            sender_id: senderId,
+            recipient_id: recipientId,
+            message: message,
+            group_chat_id: groupChatId,
+            timestamp: new Date()
+        });
+        const savedMongoMessage = await mongoMessage.save();
+        console.log('Повідомлення збережено в MongoDB:', savedMongoMessage);
+        
+        // Перевіряємо кількість повідомлень в MongoDB
+        const count = await Message.countDocuments();
+        console.log('Загальна кількість повідомлень в MongoDB:', count);
         
         return savedMessageRows[0];
     } catch (error) {
@@ -152,27 +185,63 @@ async function saveMessage(senderId, recipientId, message, groupChatId = null) {
 
 async function getMessageHistory(userId1, userId2, groupChatId = null) {
     try {
-        let query, params;
+        let mongoQuery;
         if (groupChatId) {
-            query = `
-                SELECT m.id, m.sender_id, m.group_chat_id, m.message, m.timestamp, u.username as sender_name
-                FROM messages m 
-                JOIN users u ON m.sender_id = u.id 
-                WHERE m.group_chat_id = ?
-                ORDER BY m.timestamp ASC`;
-            params = [groupChatId];
+            mongoQuery = { group_chat_id: groupChatId };
         } else {
-            query = `
-                SELECT m.id, m.sender_id, m.recipient_id, m.message, m.timestamp, u.username as sender_name 
-                FROM messages m
-                JOIN users u ON m.sender_id = u.id
-                WHERE (m.sender_id = ? AND m.recipient_id = ?) 
-                   OR (m.sender_id = ? AND m.recipient_id = ?)
-                ORDER BY m.timestamp ASC`;
-            params = [userId1, userId2, userId2, userId1];
+            mongoQuery = {
+                $or: [
+                    { sender_id: userId1, recipient_id: userId2 },
+                    { sender_id: userId2, recipient_id: userId1 }
+                ]
+            };
         }
-        const [rows] = await pool.query(query, params);
-        return rows;
+
+        // Отримуємо останні 3 повідомлення для кожного відправника
+        const messages = await Message.aggregate([
+            { $match: mongoQuery },
+            { $sort: { timestamp: -1 } },
+            {
+                $group: {
+                    _id: "$sender_id",
+                    messages: { $push: "$$ROOT" }
+                }
+            },
+            {
+                $project: {
+                    messages: { $slice: ["$messages", 3] }
+                }
+            },
+            { $unwind: "$messages" },
+            { $replaceRoot: { newRoot: "$messages" } },
+            { $sort: { timestamp: 1 } }
+        ]);
+        
+        if (messages.length === 0) return [];
+
+        // Отримуємо імена користувачів з MySQL
+        const userIds = [...new Set(messages.map(m => m.sender_id))];
+        if (userIds.length === 0) return [];
+
+        const [users] = await pool.query(
+            'SELECT id, username FROM users WHERE id IN (?)',
+            [userIds]
+        );
+        
+        const userMap = users.reduce((acc, user) => {
+            acc[user.id] = user.username;
+            return acc;
+        }, {});
+
+        return messages.map(msg => ({
+            id: msg._id,
+            sender_id: msg.sender_id,
+            recipient_id: msg.recipient_id,
+            message: msg.message,
+            timestamp: msg.timestamp,
+            sender_name: userMap[msg.sender_id],
+            group_chat_id: msg.group_chat_id
+        }));
     } catch (error) {
         console.error('Error fetching message history:', error);
         return [];
