@@ -25,56 +25,66 @@ const pool = mysql.createPool(dbConfig);
 const activeUsers = new Map(); // socket.id -> { username, userId }
 const userSockets = new Map(); // userId -> Set of socket.ids (один користувач може мати кілька вкладок)
 
-async function updateUserStatus(userId, status) {
+async function updateUserStatus(userId, status, page = null) {
     try {
         const [users] = await pool.query('SELECT status FROM users WHERE id = ?', [userId]);
-        if (users.length === 0) return; // Користувача не знайдено
+        if (users.length === 0) return;
 
-        // Оновлюємо статус, тільки якщо він змінився
-        if (users[0].status !== status) {
-            await pool.query(
-                'UPDATE users SET status = ?, last_activity = NOW() WHERE id = ?',
-                [status, userId]
-            );
-            console.log(`User ${userId} status updated to ${status}`);
-            await broadcastUserStatuses();
-        } else if (status === 'online') {
-            // Якщо статус вже 'online', просто оновлюємо last_activity
-            await pool.query('UPDATE users SET last_activity = NOW() WHERE id = ?', [userId]);
-        }
+        await pool.query(
+            'UPDATE users SET status = ?, last_activity = NOW() WHERE id = ?',
+            [status, userId]
+        );
+
+        // Оновлюємо статус в таблиці students
+        await pool.query(
+            'UPDATE students SET active = ? WHERE user_id = ?',
+            [status === 'online' ? 1 : 0, userId]
+        );
+
+        console.log(`Статус користувача ${userId} оновлено на ${status}${page ? ` (сторінка: ${page})` : ''}`);
+        await broadcastUserStatuses();
     } catch (error) {
-        console.error('Error updating user status:', error);
+        console.error('Помилка оновлення статусу користувача:', error);
     }
 }
 
 async function checkInactiveUsers() {
     try {
-        const [inactiveDbUsers] = await pool.query(
-            'SELECT id FROM users WHERE status = "online" AND last_activity < NOW() - INTERVAL 1 MINUTE' // Зменшено інтервал для тестування
+        // Знаходимо користувачів, які були неактивні протягом 5 хвилин
+        const [inactiveUsers] = await pool.query(
+            'SELECT id FROM users WHERE status = "online" AND last_activity < NOW() - INTERVAL 5 MINUTE'
         );
         
-        for (const user of inactiveDbUsers) {
-            // Перевіряємо, чи дійсно немає активних сокетів для цього користувача
+        for (const user of inactiveUsers) {
             if (!userSockets.has(user.id) || userSockets.get(user.id).size === 0) {
                 await updateUserStatus(user.id, 'offline');
             }
         }
     } catch (error) {
-        console.error('Error checking inactive users:', error);
+        console.error('Помилка перевірки неактивних користувачів:', error);
     }
 }
 
-setInterval(checkInactiveUsers, 60 * 1000); // Перевірка кожну хвилину
+// Перевіряємо неактивних користувачів кожні 5 хвилин
+setInterval(checkInactiveUsers, 5 * 60 * 1000);
 
 async function getUserStatuses() {
     try {
-        const [rows] = await pool.query('SELECT id, status FROM users');
+        const [rows] = await pool.query(`
+            SELECT u.id, u.status, u.last_activity, u.username 
+            FROM users u
+            LEFT JOIN students s ON u.id = s.user_id
+        `);
         return rows.reduce((acc, user) => {
-            acc[user.id] = user.status;
+            acc[user.id] = {
+                status: user.status,
+                lastActivity: user.last_activity,
+                username: user.username
+            };
             return acc;
         }, {});
     } catch (error) {
-        console.error('Error fetching user statuses:', error);
+        console.error('Помилка отримання статусів користувачів:', error);
         return {};
     }
 }
@@ -172,11 +182,12 @@ async function getMessageHistory(userId1, userId2, groupChatId = null) {
 
 io.on('connection', async (socket) => {
     console.log('Користувач підключився:', socket.id);
-    await broadcastUserStatuses(); // Надіслати статуси при підключенні нового користувача
+    await broadcastUserStatuses();
 
     socket.on('auth', async (userData) => {
-        const { username, id: userId } = userData; // Перейменовано id на userId для ясності
-        console.log(`User authenticated: ${username} (ID: ${userId}), socket: ${socket.id}`);
+        const { username, id: userId } = userData;
+        console.log(`Користувач авторизувався: ${username} (ID: ${userId}), socket: ${socket.id}`);
+        
         activeUsers.set(socket.id, { username, userId });
         
         if (!userSockets.has(userId)) {
@@ -185,6 +196,28 @@ io.on('connection', async (socket) => {
         userSockets.get(userId).add(socket.id);
         
         await updateUserStatus(userId, 'online');
+    });
+
+    socket.on('user_activity', async ({ userId, page }) => {
+        const userData = activeUsers.get(socket.id);
+        if (userData && userData.userId === userId) {
+            await updateUserStatus(userId, 'online', page);
+        }
+    });
+
+    socket.on('logout', async () => {
+        const userData = activeUsers.get(socket.id);
+        if (userData) {
+            await updateUserStatus(userData.userId, 'offline');
+            activeUsers.delete(socket.id);
+            const userSocketSet = userSockets.get(userData.userId);
+            if (userSocketSet) {
+                userSocketSet.delete(socket.id);
+                if (userSocketSet.size === 0) {
+                    userSockets.delete(userData.userId);
+                }
+            }
+        }
     });
 
     socket.on('get_chat_history', async ({ userId1, userId2, groupChatId }) => {
@@ -279,7 +312,6 @@ io.on('connection', async (socket) => {
             if (userSocketSet) {
                 userSocketSet.delete(socket.id);
                 if (userSocketSet.size === 0) {
-                    // Якщо більше немає активних сокетів для цього користувача
                     userSockets.delete(userData.userId);
                     await updateUserStatus(userData.userId, 'offline');
                 }
