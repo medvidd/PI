@@ -10,6 +10,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Hind:wght@300;400;500;600;700&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Nunito:ital,wght@0,200..1000;1,200..1000&family=Rubik:ital,wght@0,300..900;1,300..900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="manifest" href="/PI/manifest.json">
+    <!-- Додаємо Socket.IO клієнт -->
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
 </head>
 <body>
     <header>
@@ -26,41 +28,15 @@
                     <span class="notification-dot"></span>
                 </a>
                 <div class="bmodal">
-                    <div class="message">
-                        <img src="/PI/images/account.png" alt="User picture" class="avatar">
-                        <div class="message-box">
-                            <div class="message-content">
-                                <h2>Name Surname</h2>
-                                <p>New message received!</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="message">
-                        <img src="/PI/images/account.png" alt="User picture" class="avatar">
-                        <div class="message-box">
-                            <div class="message-content">
-                                <h2>Name Surname</h2>
-                                <p>New message received!</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="message">
-                        <img src="/PI/images/account.png" alt="User picture" class="avatar">
-                        <div class="message-box">
-                            <div class="message-content">
-                                <h2>Name Surname</h2>
-                                <p>New message received!</p>
-                            </div>
-                        </div>
-                    </div>
+                    <!-- Сповіщення будуть додаватися динамічно -->
                 </div>
             </div>
-            <div class="autorization" id="loginButton">
-                <img class="authorization" src="/PI/images/account.png" alt="User picture" width="50" height="50">
+            <div class="autorization" id="loginButton" role="button" tabindex="0">
+                <img src="/PI/images/account.png" alt="User picture" width="50" height="50">
                 <h1 class="actext">Authorization</h1> 
             </div>
             <div class="account" id="account" style="display: none;">
-                <img class="account" src="/PI/images/account.png" alt="User picture" width="50" height="50">
+                <img src="/PI/images/account.png" alt="User picture" width="50" height="50">
                 <h1 class="actext" id="usernameDisplay">Name Surname</h1> 
                 <div class="modal">
                     <a href="profile.html">Profile</a>
@@ -69,11 +45,11 @@
             </div>
         </div> 
     </header>
-    <div class="modal-login" id="modalLogin" style="display: none;">
-        <div class="modal-content">
+    <div class="modal-login" id="modalLogin">
+        <div class="modal-content" onclick="event.stopPropagation();">
             <div class="modal-header">
                 <h2>Authorize</h2>
-                <span id="closeLoginModal" class="close">×</span>
+                <span id="closeLoginModal" class="close" role="button" tabindex="0">×</span>
             </div>
             <div class="modal-body">
                 <form id="loginForm">
@@ -91,7 +67,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="button-cancel" id="cancelLoginBtn">Cancel</button>
-                <button type="submit" form="loginForm" class="button-create" id="loginBtn">Login</button>
+                <button type="submit" form="loginForm" class="button-create">Login</button>
             </div>
         </div>
     </div>
@@ -101,13 +77,13 @@
                 <a href="dashboard.html"><h2>Dashboard</h2></a>
                 <a href="index.html"><h2>Students</h2></a>
                 <a href="tasks.html"><h2>Tasks</h2></a>
+                <a href="messages.html"><h2 class="activated">Messages</h2></a>
             </div>
         </nav>
         <main>
             <div class="main-header">
-                <h1>Messanger</h1>
+                <h1>Messages</h1>
             </div>
-
             <div class="messages-container">
                 <div class="chat-list">
                     <div class="chat-list-header">
@@ -117,76 +93,26 @@
                         </button>
                     </div>
                     <div class="chat-items" id="chatItems">
-                        <div class="chat-item active" data-chat="admin">
-                            <div class="chat-avatar">A</div>
-                            <div class="chat-info">
-                                <div class="chat-name">Admin</div>
-                                <p class="chat-preview">Welcome to StuManager!</p>
-                                <div class="chat-status status-online">Online</div>
-                            </div>
-                            <div class="notification-badge" style="display: none;">1</div>
-                        </div>
-                        <div class="chat-item" data-chat="john">
-                            <div class="chat-avatar">J</div>
-                            <div class="chat-info">
-                                <div class="chat-name">John Smith</div>
-                                <p class="chat-preview">How are you doing?</p>
-                                <div class="chat-status status-offline">Offline</div>
-                            </div>
-                        </div>
-                        <div class="chat-item" data-chat="ann">
-                            <div class="chat-avatar">A</div>
-                            <div class="chat-info">
-                                <div class="chat-name">Ann Johnson</div>
-                                <p class="chat-preview">See you tomorrow!</p>
-                                <div class="chat-status status-online">Online</div>
-                            </div>
-                        </div>
+                        <!-- Чати будуть додаватися динамічно -->
                     </div>
                 </div>
 
                 <div class="chat-window">
                     <div class="chat-header">
-                        <h3 class="chat-title" id="chatTitle">Admin</h3>
+                        <h3 class="chat-title" id="chatTitle">Select a chat</h3>
                         <div class="chat-actions">
-                            <button class="chat-action-btn" id="addMembersBtn" title="Add members">
+                            <!-- Кнопки будуть показуватись/ховатись залежно від типу чату -->
+                            <button class="chat-action-btn" id="addMembersToGroupBtn" title="Add members to group" style="display: none;">
                                 <i class="fas fa-user-plus"></i>
                             </button>
-                            <button class="chat-action-btn" id="chatInfoBtn" title="Chat info">
+                            <button class="chat-action-btn" id="groupInfoBtn" title="Group info" style="display: none;">
                                 <i class="fas fa-info-circle"></i>
                             </button>
                         </div>
                     </div>
 
                     <div class="messages-area" id="messagesArea">
-                        <div class="message">
-                            <div class="message-avatar">A</div>
-                            <div class="message-content">
-                                <div class="message-bubble">
-                                    Welcome to StuManager messaging system! You can now communicate with students and colleagues.
-                                </div>
-                                <div class="message-info">
-                                    <span>Admin</span>
-                                    <span>•</span>
-                                    <span>12:30 PM</span>
-                                    <span class="status-online">Online</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="message own">
-                            <div class="message-avatar">M</div>
-                            <div class="message-content">
-                                <div class="message-bubble">
-                                    Thank you! This looks great.
-                                </div>
-                                <div class="message-info">
-                                    <span>12:31 PM</span>
-                                    <span>•</span>
-                                    <span>You</span>
-                                </div>
-                            </div>
-                        </div>
+                        <!-- Повідомлення будуть додаватися динамічно -->
                     </div>
 
                     <div class="message-input-area">
@@ -391,7 +317,8 @@
         </div>
     </div>
 
+    <!-- Додаємо наш клієнтський код -->
+    <script src="/PI/chat_script.js"></script>
     <script src="/PI/script.js" defer></script>
-    <script src="/PI/chat_script.js" defer></script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9450374e29a622f5',t:'MTc0ODEyNTYwMS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</body>
 </html>

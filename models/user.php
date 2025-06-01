@@ -28,6 +28,18 @@ class User {
         return $user ? $user['id'] : false;
     }
 
+    public function getAllUsers() {
+        $stmt = $this->db->prepare('SELECT id, username FROM users ORDER BY username');
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $users = [];
+        while ($row = $result->fetch_assoc()) {
+            $users[] = $row;
+        }
+        $stmt->close();
+        return $users;
+    }
+
     public function checkUsernameExists($username) {
         $stmt = $this->db->prepare('SELECT id FROM users WHERE username = ?');
         $stmt->bind_param('s', $username);

@@ -59,6 +59,10 @@
         transition: all 0.3s ease;
     }
 
+    .bell.ringing {
+        animation: bellRing 0.6s ease-in-out;
+    }
+
     .notification-dot {
         position: absolute;
         top: -5px;
@@ -81,14 +85,9 @@
     }
 
     .notification:hover .bell {
-        animation: bellRing 0.6s ease-in-out;
+        animation: none;
     }
 
-    .notification:hover .notification-dot {
-        opacity: 1;
-        transform: scale(1);
-    }
-    
     .notification-dot.active {
         opacity: 1;
         transform: scale(1);
@@ -241,12 +240,24 @@
         border-radius: 30px;
         width: 275px;
         height: 50px;
-        margin-top:8px;
-        margin-bottom: 8px;
-        margin-right: 8px;
-        margin-left:10px;
+        margin: 8px 8px 8px 10px;
         position: relative;
         cursor: pointer;
+        display: flex;
+        align-items: center;
+        transition: all 0.3s ease;
+        user-select: none;
+        outline: none;
+    }
+
+    .autorization:hover,
+    .autorization:focus {
+        opacity: 0.8;
+        box-shadow: 0 0 5px rgba(44, 100, 133, 0.5);
+    }
+
+    .autorization:active {
+        transform: scale(0.98);
     }
 
     .autorization img
@@ -272,37 +283,58 @@
         z-index: 1000;
     }
     
-    .modal-content {
+    .modal-login .modal-content {
         background: #fff;
         padding: 20px;
         border-radius: 8px;
         width: 90%;
         max-width: 500px;
         box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        position: relative;
     }
     
-    .modal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-    
-    .close {
+    .modal-login .close {
         cursor: pointer;
         font-size: 24px;
+        padding: 5px;
+        transition: all 0.3s ease;
     }
-    
-    .modal-body {
+
+    .modal-login .close:hover,
+    .modal-login .close:focus {
+        color: #000;
+        transform: scale(1.1);
+    }
+
+    .modal-login .modal-body {
         margin: 20px 0;
     }
-    
-    .modal-footer {
+
+    .modal-login .modal-footer {
         display: flex;
         justify-content: flex-end;
         gap: 10px;
+        margin-top: 20px;
     }
-    
-    .error-message {
+
+    .modal-login input[type="text"],
+    .modal-login input[type="password"] {
+        width: 100%;
+        padding: 8px;
+        margin: 5px 0 15px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        box-sizing: border-box;
+    }
+
+    .modal-login input[type="text"]:focus,
+    .modal-login input[type="password"]:focus {
+        border-color: rgb(44, 100, 133);
+        outline: none;
+        box-shadow: 0 0 5px rgba(44, 100, 133, 0.2);
+    }
+
+    .modal-login .error-message {
         color: red;
         font-size: 12px;
     }

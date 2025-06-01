@@ -1,523 +1,720 @@
-// Глобальні змінні для месенджера
-let currentChat = 'admin';
-let chats = {
-    admin: {
-        id: 'admin',
-        name: 'Admin',
-        type: 'individual',
-        avatar: 'A',
-        status: 'online',
-        members: ['admin', 'user'],
-        messages: [
-            {
-                id: 1,
-                sender: 'admin',
-                content: 'Welcome to StuManager messaging system! You can now communicate with students and colleagues.',
-                timestamp: '12:30 PM',
-                avatar: 'A'
-            },
-            {
-                id: 2,
-                sender: 'user',
-                content: 'Thank you! This looks great.',
-                timestamp: '12:31 PM',
-                avatar: 'M'
-            }
-        ]
-    },
-    john: {
-        id: 'john',
-        name: 'John Smith',
-        type: 'individual',
-        avatar: 'J',
-        status: 'offline',
-        members: ['john', 'user'],
-        messages: [
-            {
-                id: 1,
-                sender: 'john',
-                content: 'How are you doing?',
-                timestamp: '11:45 AM',
-                avatar: 'J'
-            }
-        ]
-    },
-    ann: {
-        id: 'ann',
-        name: 'Ann Johnson',
-        type: 'individual',
-        avatar: 'A',
-        status: 'online',
-        members: ['ann', 'user'],
-        messages: [
-            {
-                id: 1,
-                sender: 'ann',
-                content: 'See you tomorrow!',
-                timestamp: '2:15 PM',
-                avatar: 'A'
-            }
-        ]
-    }
-};
+// Підключення до сервера Socket.IO
+const socket = io('http://localhost:3000');
 
-let students = [
-    { id: 1, name: 'John Smith', group: 'Group A', avatar: 'J' },
-    { id: 2, name: 'Ann Johnson', group: 'Group B', avatar: 'A' },
-    { id: 3, name: 'Mike Davis', group: 'Group A', avatar: 'M' },
-    { id: 4, name: 'Sarah Wilson', group: 'Group C', avatar: 'S' },
-    { id: 5, name: 'David Brown', group: 'Group B', avatar: 'D' },
-    { id: 6, name: 'Emma Taylor', group: 'Group A', avatar: 'E' },
-    { id: 7, name: 'Alex Thompson', group: 'Group C', avatar: 'A' },
-    { id: 8, name: 'Lisa White', group: 'Group B', avatar: 'L' },
-    { id: 9, name: 'Ryan Miller', group: 'Group A', avatar: 'R' }
-];
+// Глобальні змінні
+let currentUserId = null;
+let currentUsername = null;
+let currentChat = null; // ID поточного активного індивідуального чату (користувача)
+let currentGroupChat = null; // ID поточного активного групового чату
+let chats = {}; // Може бути використано для зберігання даних про чати
+let userStatuses = {};
+let onlineUsers = new Set(); // Можливо не використовується, але залишено
 
-let messageIdCounter = 100;
+// Функція для оновлення UI хедера для авторизованого користувача
+function updateHeaderUIForLoggedInUser(username) {
+    const loginButton = document.getElementById('loginButton');
+    const account = document.getElementById('account');
+    const notificationElement = document.getElementById('notification');
+    const usernameDisplay = document.getElementById('usernameDisplay');
 
-// Ініціалізація месенджера
-document.addEventListener('DOMContentLoaded', function() {
-    initializeMessenger();
-    setupEventListeners();
-});
-
-function initializeMessenger() {
-    renderChatList();
-    loadChat(currentChat);
+    if (loginButton) loginButton.style.display = 'none';
+    if (account) account.style.display = 'flex';
+    if (notificationElement) notificationElement.style.display = 'block';
+    if (usernameDisplay) usernameDisplay.textContent = username;
 }
 
-function setupEventListeners() {
-    // Обробники для чатів
-    document.addEventListener('click', function(e) {
-        if (e.target.closest('.chat-item')) {
-            const chatId = e.target.closest('.chat-item').dataset.chat;
-            switchChat(chatId);
-        }
-    });
+// Функція для оновлення UI хедера для неавторизованого користувача
+function updateHeaderUIForLoggedOutUser() {
+    const loginButton = document.getElementById('loginButton');
+    const account = document.getElementById('account');
+    const notificationElement = document.getElementById('notification');
 
-    // Відправка повідомлень
-    const messageInput = document.getElementById('messageInput');
-    const sendBtn = document.getElementById('sendBtn');
-
-    sendBtn.addEventListener('click', sendMessage);
-    messageInput.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            sendMessage();
-        }
-    });
-
-    // Модальні вікна
-    setupModalEventListeners();
+    if (loginButton) loginButton.style.display = 'flex';
+    if (account) account.style.display = 'none';
+    if (notificationElement) notificationElement.style.display = 'none';
 }
 
-function setupModalEventListeners() {
-    // Створення нового чату
-    const newChatBtn = document.getElementById('newChatBtn');
-    const newChatModal = document.getElementById('newChatModal');
-    const closeNewChatModal = document.getElementById('closeNewChatModal');
-    const cancelNewChatBtn = document.getElementById('cancelNewChatBtn');
-    const createChatBtn = document.getElementById('createChatBtn');
+// Допоміжна функція для оновлення стану червоної крапки
+function updateNotificationDotState() {
+    const notificationContainer = document.getElementById('notification');
+    if (!notificationContainer) return;
+    const notificationDot = notificationContainer.querySelector('.notification-dot');
+    const bmodal = notificationContainer.querySelector('.bmodal');
 
-    newChatBtn.addEventListener('click', () => openNewChatModal());
-    closeNewChatModal.addEventListener('click', () => closeModal('newChatModal'));
-    cancelNewChatBtn.addEventListener('click', () => closeModal('newChatModal'));
-    createChatBtn.addEventListener('click', createNewChat);
-
-    // Тип чату
-    document.querySelectorAll('.chat-type-option').forEach(option => {
-        option.addEventListener('click', function() {
-            document.querySelectorAll('.chat-type-option').forEach(opt => opt.classList.remove('selected'));
-            this.classList.add('selected');
-            toggleChatNameField(this.dataset.type === 'group');
-            updateCreateButtonState();
-        });
-    });
-
-    // Пошук студентів у новому чаті
-    const studentSearch = document.getElementById('studentSearch');
-    studentSearch.addEventListener('input', function() {
-        filterStudents(this.value, 'studentList');
-    });
-
-    // Вибір студентів у новому чаті
-    document.addEventListener('change', function(e) {
-        if (e.target.type === 'checkbox' && e.target.closest('#studentList')) {
-            updateStudentSelection('studentList', 'selectedCount');
-            updateCreateButtonState();
+    if (bmodal && notificationDot) {
+        if (bmodal.children.length > 0) {
+            notificationDot.style.display = 'block';
+            notificationDot.classList.add('active');
+        } else {
+            notificationDot.style.display = 'none';
+            notificationDot.classList.remove('active');
         }
-    });
-
-    // Додавання учасників
-    const addMembersBtn = document.getElementById('addMembersBtn');
-    const addMembersModal = document.getElementById('addMembersModal');
-    const closeAddMembersModal = document.getElementById('closeAddMembersModal');
-    const cancelAddMembersBtn = document.getElementById('cancelAddMembersBtn');
-
-    document.getElementById('addMembersBtn').addEventListener('click', () => openAddMembersModal());
-    closeAddMembersModal.addEventListener('click', () => closeModal('addMembersModal'));
-    cancelAddMembersBtn.addEventListener('click', () => closeModal('addMembersModal'));
-
-    // Інформація про чат
-    const chatInfoBtn = document.getElementById('chatInfoBtn');
-    const chatInfoModal = document.getElementById('chatInfoModal');
-    const closeChatInfoModal = document.getElementById('closeChatInfoModal');
-    const cancelChatInfoBtn = document.getElementById('cancelChatInfoBtn');
-    const saveChatInfoBtn = document.getElementById('saveChatInfoBtn');
-
-    chatInfoBtn.addEventListener('click', () => openChatInfoModal());
-    closeChatInfoModal.addEventListener('click', () => closeModal('chatInfoModal'));
-    cancelChatInfoBtn.addEventListener('click', () => closeModal('chatInfoModal'));
-    saveChatInfoBtn.addEventListener('click', saveChatInfo);
-
-    // Закриття модального вікна при кліку поза ним
-    document.addEventListener('click', function(e) {
-        if (e.target.classList.contains('cmodal-overlay')) {
-            e.target.style.display = 'none';
-        }
-    });
-}
-
-function renderChatList() {
-    const chatItems = document.getElementById('chatItems');
-    chatItems.innerHTML = '';
-
-    Object.values(chats).forEach(chat => {
-        const lastMessage = chat.messages[chat.messages.length - 1];
-        const chatItem = document.createElement('div');
-        chatItem.className = `chat-item ${chat.id === currentChat ? 'active' : ''}`;
-        chatItem.dataset.chat = chat.id;
-
-        chatItem.innerHTML = `
-            <div class="chat-avatar">${chat.avatar}</div>
-            <div class="chat-info">
-                <div class="chat-name">${chat.name}</div>
-                <p class="chat-preview">${lastMessage ? lastMessage.content : 'No messages yet'}</p>
-                <div class="chat-status ${chat.status === 'online' ? 'status-online' : 'status-offline'}">
-                    ${chat.status === 'online' ? 'Online' : 'Offline'}
-                </div>
-            </div>
-            <div class="notification-badge" style="display: none;">1</div>
-        `;
-
-        chatItems.appendChild(chatItem);
-    });
-}
-
-function switchChat(chatId) {
-    if (chats[chatId]) {
-        currentChat = chatId;
-        document.querySelectorAll('.chat-item').forEach(item => item.classList.remove('active'));
-        document.querySelector(`[data-chat="${chatId}"]`).classList.add('active');
-        loadChat(chatId);
     }
 }
 
-function loadChat(chatId) {
-    const chat = chats[chatId];
-    if (!chat) return;
+// Функція для показу сповіщення
+function showNotification(messageData) {
+    const { sender, message, groupChatId, groupName } = messageData; // Додано groupName
+    const notificationContainer = document.getElementById('notification');
+    if (!notificationContainer) return;
 
-    // Оновлення заголовка чату
-    document.getElementById('chatTitle').textContent = chat.name;
+    const notificationDot = notificationContainer.querySelector('.notification-dot');
+    const bmodal = notificationContainer.querySelector('.bmodal');
+    const bell = notificationContainer.querySelector('.bell');
 
-    // Оновлення повідомлень
-    const messagesArea = document.getElementById('messagesArea');
-    messagesArea.innerHTML = '';
+    const onMessagesPage = window.location.pathname.endsWith('messages.html');
+    let isChatActiveWithMessageSource = false;
+    if (onMessagesPage) {
+        if (groupChatId) {
+            isChatActiveWithMessageSource = currentGroupChat === groupChatId;
+        } else {
+            isChatActiveWithMessageSource = currentChat === sender.id && !currentGroupChat;
+        }
+    }
 
-    chat.messages.forEach(message => {
-        const messageElement = createMessageElement(message);
-        messagesArea.appendChild(messageElement);
-    });
+    if (isChatActiveWithMessageSource) {
+        console.log("Notification suppressed: user in active chat with sender/group.");
+        return;
+    }
 
-    // Скролінг донизу
-    messagesArea.scrollTop = messagesArea.scrollHeight;
-}
+    const MAX_NOTIFICATIONS = 3;
+    const senderIdForNotification = groupChatId ? `group_${groupChatId}` : sender.id.toString();
+    const displayName = groupChatId ? (groupName || `Group ${groupChatId}`) : sender.username;
 
-function createMessageElement(message) {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${message.sender === 'user' ? 'own' : ''}`;
+    const existingNotification = bmodal.querySelector(`.message[data-source-id="${senderIdForNotification}"]`);
+    if (existingNotification) {
+        existingNotification.remove();
+    }
 
-    const isOwn = message.sender === 'user';
-    messageDiv.innerHTML = `
-        <div class="message-avatar">${message.avatar}</div>
-        <div class="message-content">
-            <div class="message-bubble">${message.content}</div>
-            <div class="message-info">
-                ${isOwn ? 
-                    `<span>${message.timestamp}</span><span>•</span><span>You</span>` :
-                    `<span>${message.sender}</span><span>•</span><span>${message.timestamp}</span><span class="status-online">Online</span>`
-                }
+    const newMessageDiv = document.createElement('div');
+    newMessageDiv.className = 'message';
+    newMessageDiv.dataset.sourceId = senderIdForNotification;
+    newMessageDiv.innerHTML = `
+        <img src="/PI/images/account.png" alt="User picture" class="avatar">
+        <div class="message-box">
+            <div class="message-content">
+                <h2>${displayName}</h2>
+                <p>${groupChatId ? sender.username + ': ' : ''}${message}</p>
             </div>
         </div>
     `;
 
-    return messageDiv;
-}
+    newMessageDiv.addEventListener('click', () => {
+        newMessageDiv.remove();
+        updateNotificationDotState();
+        const targetUrl = groupChatId 
+            ? `messages.html?group_chat=${groupChatId}` 
+            : `messages.html?chat=${sender.id}`;
+        window.location.href = targetUrl;
+    });
 
-function sendMessage() {
-    const messageInput = document.getElementById('messageInput');
-    const content = messageInput.value.trim();
+    bmodal.prepend(newMessageDiv);
 
-    if (!content) return;
-
-    const message = {
-        id: ++messageIdCounter,
-        sender: 'user',
-        content: content,
-        timestamp: getCurrentTime(),
-        avatar: 'M'
-    };
-
-    chats[currentChat].messages.push(message);
-    messageInput.value = '';
-
-    // Оновлення чату
-    loadChat(currentChat);
-    renderChatList();
-
-    // Симуляція відповіді (для демонстрації)
-    setTimeout(() => {
-        simulateResponse();
-    }, 1000 + Math.random() * 2000);
-}
-
-function simulateResponse() {
-    const chat = chats[currentChat];
-    const responses = [
-        'Thanks for your message!',
-        'I understand.',
-        'That sounds good.',
-        'Let me think about it.',
-        'Sure, no problem.',
-        'Ill get back to you soon.'
-    ];
-
-    const response = {
-        id: ++messageIdCounter,
-        sender: chat.id,
-        content: responses[Math.floor(Math.random() * responses.length)],
-        timestamp: getCurrentTime(),
-        avatar: chat.avatar
-    };
-
-    chat.messages.push(response);
-    
-    if (currentChat === chat.id) {
-        loadChat(currentChat);
+    while (bmodal.children.length > MAX_NOTIFICATIONS) {
+        bmodal.removeChild(bmodal.lastChild);
     }
-    renderChatList();
+
+    notificationContainer.style.display = 'block';
+    if (notificationDot) {
+        notificationDot.style.display = 'block';
+        notificationDot.classList.add('active');
+    }
+    
+    if (bell) {
+        bell.classList.add('ringing');
+        setTimeout(() => {
+            bell.classList.remove('ringing');
+        }, 600);
+    }
 }
 
-function getCurrentTime() {
-    const now = new Date();
-    return now.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true 
+// Функція для очищення сповіщення для конкретного чату/групи
+function clearNotificationForChat(sourceId, isGroup = false) {
+    const bmodal = document.querySelector('#notification .bmodal');
+    if (bmodal) {
+        const dataSourceId = isGroup ? `group_${sourceId}` : sourceId.toString();
+        const notificationElement = bmodal.querySelector(`.message[data-source-id="${dataSourceId}"]`);
+        if (notificationElement) {
+            notificationElement.remove();
+        }
+        updateNotificationDotState();
+    }
+}
+
+// Функція для авторизації користувача
+async function initializeChat() {
+    try {
+        const response = await fetch('/PI/api/check_session.php', {
+            headers: { 'Cache-Control': 'no-cache' }
+        });
+        const result = await response.json();
+
+        if (result.success) {
+            const userResponse = await fetch('/PI/api/get_user_id.php', {
+                headers: { 'Cache-Control': 'no-cache' }
+            });
+            const userData = await userResponse.json();
+
+            if (userData.success) {
+                currentUsername = result.username;
+                currentUserId = userData.userId;
+
+                updateHeaderUIForLoggedInUser(currentUsername);
+                localStorage.setItem('isLoggedIn', 'true');
+                localStorage.setItem('username', currentUsername);
+                
+                socket.emit('auth', {
+                    username: currentUsername,
+                    id: currentUserId
+                });
+                
+                await loadUsersAndGroups(); // Завантажуємо і користувачів, і групи
+                setupEventListeners();
+                setupModalEventListeners();
+
+                const urlParams = new URLSearchParams(window.location.search);
+                const chatIdFromUrl = urlParams.get('chat');
+                const groupChatIdFromUrl = urlParams.get('group_chat');
+
+                if (chatIdFromUrl) {
+                    switchChat(parseInt(chatIdFromUrl), false);
+                } else if (groupChatIdFromUrl) {
+                    switchChat(parseInt(groupChatIdFromUrl), true);
+                } else {
+                    updateNotificationDotState();
+                }
+
+            } else {
+                updateHeaderUIForLoggedOutUser();
+                localStorage.removeItem('isLoggedIn');
+                localStorage.removeItem('username');
+                throw new Error('Failed to get user ID');
+            }
+        } else {
+            updateHeaderUIForLoggedOutUser();
+            localStorage.removeItem('isLoggedIn');
+            localStorage.removeItem('username');
+            window.location.href = '/PI/index.html';
+        }
+    } catch (error) {
+        console.error('Error initializing chat:', error);
+        updateHeaderUIForLoggedOutUser();
+        localStorage.removeItem('isLoggedIn');
+        localStorage.removeItem('username');
+        if (!localStorage.getItem('isLoggedIn')) { // Перенаправляємо тільки якщо точно не авторизовані
+             window.location.href = '/PI/index.html';
+        }
+    }
+}
+
+socket.on('user_statuses', ({ statuses }) => {
+    userStatuses = statuses;
+    updateUserStatuses();
+});
+
+function updateUserStatuses() {
+    document.querySelectorAll('.chat-item[data-chat]').forEach(item => { // Тільки для індивідуальних чатів
+        const userId = parseInt(item.dataset.chat);
+        if (!userId || item.dataset.isGroup === 'true') return;
+        
+        const statusElement = item.querySelector('.chat-status');
+        if (statusElement) {
+            const status = userStatuses[userId] || 'offline';
+            statusElement.className = `chat-status status-${status}`;
+            statusElement.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        }
     });
 }
 
-// Модальні вікна
-function openNewChatModal() {
-    document.getElementById('newChatModal').style.display = 'flex';
-    resetNewChatModal();
+async function loadUsersAndGroups() {
+    await loadUsers();
+    await loadGroupChats(); // Функція для завантаження групових чатів
 }
 
-function resetNewChatModal() {
-    // Скидання форми
-    document.getElementById('chatName').value = '';
-    document.querySelectorAll('#studentList input[type="checkbox"]').forEach(cb => cb.checked = false);
-    document.getElementById('studentSearch').value = '';
+
+async function loadUsers() { // Завантаження індивідуальних чатів (користувачів)
+    try {
+        const response = await fetch('/PI/api/get_users.php');
+        const result = await response.json();
+        const chatItemsContainer = document.getElementById('chatItems');
+        
+        if (result.success) {
+            result.users.forEach(user => {
+                if (user.id !== currentUserId) {
+                    const existingItem = chatItemsContainer.querySelector(`.chat-item[data-chat="${user.id}"][data-is-group="false"]`);
+                    if(existingItem) existingItem.remove(); // Видаляємо старий елемент, якщо є
+
+                    const chatItem = document.createElement('div');
+                    chatItem.className = 'chat-item';
+                    chatItem.dataset.chat = user.id;
+                    chatItem.dataset.isGroup = "false"; // Позначаємо, що це не група
+                    
+                    chatItem.innerHTML = `
+                        <div class="chat-avatar">${user.username[0].toUpperCase()}</div>
+                        <div class="chat-info">
+                            <div class="chat-name">${user.username}</div>
+                            <p class="chat-preview">Click to start chatting</p>
+                            <div class="chat-status status-${user.status || 'offline'}">
+                                ${(user.status || 'offline').charAt(0).toUpperCase() + (user.status || 'offline').slice(1)}
+                            </div>
+                        </div>
+                    `;
+                    chatItem.addEventListener('click', () => switchChat(user.id, false));
+                    chatItemsContainer.appendChild(chatItem);
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error loading users:', error);
+    }
+}
+
+async function loadGroupChats() {
+    try {
+        const response = await fetch('/PI/api/get_group_chats.php'); // Потрібно створити цей ендпоінт
+        const result = await response.json();
+        const chatItemsContainer = document.getElementById('chatItems');
+
+        if (result.success) {
+            result.groupChats.forEach(group => {
+                const existingItem = chatItemsContainer.querySelector(`.chat-item[data-chat="${group.id}"][data-is-group="true"]`);
+                if(existingItem) existingItem.remove();
+
+                const chatItem = document.createElement('div');
+                chatItem.className = 'chat-item group-chat-item'; // Можна додати клас для стилізації
+                chatItem.dataset.chat = group.id; // Використовуємо ID групи
+                chatItem.dataset.isGroup = "true"; // Позначаємо, що це група
+
+                chatItem.innerHTML = `
+                    <div class="chat-avatar"><i class="fas fa-users"></i></div> <!-- Іконка для групи -->
+                    <div class="chat-info">
+                        <div class="chat-name">${group.name}</div>
+                        <p class="chat-preview">Group chat</p>
+                        <!-- Статус для групи може бути не потрібен, або інша логіка -->
+                    </div>
+                `;
+                chatItem.addEventListener('click', () => switchChat(group.id, true));
+                chatItemsContainer.appendChild(chatItem);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading group chats:', error);
+    }
+}
+
+
+function sendMessage(recipients, message) { // recipients тут буде ID чату або ID групи
+    if (!currentUsername || (!currentChat && !currentGroupChat)) {
+        console.error('User not authenticated or no chat selected');
+        return;
+    }
     
-    // Скидання типу чату
-    document.querySelectorAll('.chat-type-option').forEach(opt => opt.classList.remove('selected'));
-    document.querySelector('[data-type="individual"]').classList.add('selected');
+    const messageData = {
+        message: message,
+        sender: {
+            username: currentUsername,
+            id: currentUserId
+        },
+        timestamp: new Date().toISOString()
+    };
+
+    if (currentGroupChat) {
+        messageData.groupChatId = currentGroupChat;
+    } else if (currentChat) {
+        messageData.recipients = [currentChat]; // Для індивідуального чату
+    } else {
+        return; // Немає вибраного чату
+    }
     
-    toggleChatNameField(false);
-    updateStudentSelection('studentList', 'selectedCount');
-    updateCreateButtonState();
+    socket.emit('send_message', messageData);
+}
+
+socket.on('new_message', (messageData) => {
+    const isActiveChat = (messageData.groupChatId && messageData.groupChatId === currentGroupChat) ||
+                         (!messageData.groupChatId && messageData.sender.id === currentChat) ||
+                         (messageData.sender.id === currentUserId); // Чи є це наше власне повідомлення
+
+    if (isActiveChat) {
+        displayMessage(messageData);
+    }
+    updateChatPreview(messageData);
+    
+    if (messageData.sender.id !== currentUserId) { // Показуємо сповіщення тільки якщо це не наше повідомлення
+        showNotification(messageData);
+    }
+});
+
+socket.on('message_history', (data) => {
+    const { messages } = data;
+    const messagesArea = document.getElementById('messagesArea');
+    messagesArea.innerHTML = '';
+    
+    messages.forEach(msg => {
+        displayMessage({
+            sender: {
+                username: msg.sender_name, // sender_name має бути в даних з сервера
+                id: msg.sender_id
+            },
+            message: msg.message,
+            timestamp: msg.timestamp,
+            groupChatId: msg.group_chat_id // Додаємо для коректного відображення
+        });
+    });
+    messagesArea.scrollTop = messagesArea.scrollHeight;
+});
+
+function displayMessage(messageData) {
+    const { sender, message, timestamp, groupChatId } = messageData;
+    const messagesArea = document.getElementById('messagesArea');
+    
+    const messageElement = document.createElement('div');
+    messageElement.classList.add('message');
+    
+    const isOwnMessage = sender.id === currentUserId;
+    if (isOwnMessage) {
+        messageElement.classList.add('own');
+    }
+    
+    // Для групових чатів, якщо це не наше повідомлення, показуємо ім'я відправника
+    const senderDisplayName = groupChatId && !isOwnMessage ? sender.username : (isOwnMessage ? 'You' : sender.username);
+
+    messageElement.innerHTML = `
+        <div class="message-avatar">${sender.username[0].toUpperCase()}</div>
+        <div class="message-content">
+            ${groupChatId && !isOwnMessage ? `<div class="message-sender-name">${sender.username}</div>` : ''}
+            <div class="message-bubble">${message}</div>
+            <div class="message-info">
+                <span>${new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                ${isOwnMessage ? `<span>•</span><span>You</span>` : ''}
+            </div>
+        </div>
+    `;
+    messagesArea.appendChild(messageElement);
+    messagesArea.scrollTop = messagesArea.scrollHeight;
+}
+
+function updateChatPreview(messageData) {
+    const { sender, message, groupChatId } = messageData;
+    let chatItem;
+
+    if (groupChatId) {
+        chatItem = document.querySelector(`.chat-item[data-chat="${groupChatId}"][data-is-group="true"]`);
+    } else {
+        // Якщо це повідомлення від нас, то оновлюємо прев'ю для чату з одержувачем
+        // Якщо це повідомлення до нас, то оновлюємо прев'ю для чату з відправником
+        const targetUserId = messageData.sender.id === currentUserId ? messageData.recipients[0] : sender.id;
+        chatItem = document.querySelector(`.chat-item[data-chat="${targetUserId}"][data-is-group="false"]`);
+    }
+    
+    if (chatItem) {
+        const preview = chatItem.querySelector('.chat-preview');
+        if (preview) {
+            const previewText = groupChatId && sender.id !== currentUserId ? `${sender.username}: ${message}` : message;
+            preview.textContent = previewText.length > 30 ? previewText.substring(0, 27) + "..." : previewText;
+        }
+    }
+}
+
+
+function switchChat(chatOrGroupId, isGroup) {
+    const messagesArea = document.getElementById('messagesArea');
+    messagesArea.innerHTML = ''; // Очищаємо перед завантаженням історії
+
+    document.querySelectorAll('.chat-item').forEach(item => item.classList.remove('active'));
+    const activeItem = document.querySelector(`.chat-item[data-chat="${chatOrGroupId}"][data-is-group="${isGroup}"]`);
+    if (activeItem) {
+        activeItem.classList.add('active');
+        document.getElementById('chatTitle').textContent = activeItem.querySelector('.chat-name').textContent;
+    }
+
+
+    if (isGroup) {
+        currentGroupChat = chatOrGroupId;
+        currentChat = null;
+        socket.emit('get_chat_history', { groupChatId: chatOrGroupId });
+    } else {
+        currentChat = chatOrGroupId;
+        currentGroupChat = null;
+        socket.emit('get_chat_history', { 
+            userId1: currentUserId,
+            userId2: chatOrGroupId
+        });
+    }
+    clearNotificationForChat(chatOrGroupId, isGroup);
+}
+
+function setupEventListeners() {
+    const messageInput = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+
+    if (messageInput && sendBtn) {
+        const sendMessageHandler = () => {
+            const message = messageInput.value.trim();
+            if (message && (currentChat || currentGroupChat)) { // Перевірка, що хоча б один чат вибраний
+                sendMessage([], message); // recipients тепер не використовуються напряму тут
+                messageInput.value = '';
+            }
+        };
+        sendBtn.addEventListener('click', sendMessageHandler);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) { // Додано перевірку на Shift+Enter для нового рядка
+                e.preventDefault();
+                sendMessageHandler();
+            }
+        });
+    }
+}
+
+function setupModalEventListeners() {
+    const newChatBtn = document.getElementById('newChatBtn');
+    const closeNewChatModal = document.getElementById('closeNewChatModal');
+    const cancelNewChatBtn = document.getElementById('cancelNewChatBtn');
+    const createChatBtn = document.getElementById('createChatBtn');
+
+    if (newChatBtn) {
+        newChatBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/PI/api/get_users.php'); // Завантажуємо тільки користувачів для вибору
+                const result = await response.json();
+                
+                if (result.success) {
+                    const studentList = document.getElementById('studentList');
+                    studentList.innerHTML = '';
+                    
+                    result.users.forEach(user => {
+                        if (user.id !== currentUserId) {
+                            const studentItem = document.createElement('div');
+                            studentItem.className = 'student-item';
+                            studentItem.dataset.id = user.id;
+                            studentItem.innerHTML = `
+                                <input type="checkbox" id="student${user.id}" data-username="${user.username}">
+                                <div class="student-info">
+                                    <div class="student-name">${user.username}</div>
+                                    <div class="student-group">${user.role || 'User'}</div>
+                                </div>
+                                <div class="student-avatar">${user.username[0].toUpperCase()}</div>`;
+                            studentList.appendChild(studentItem);
+                        }
+                    });
+                    
+                    document.querySelectorAll('.chat-type-option').forEach(opt => opt.classList.remove('selected'));
+                    document.querySelector('.chat-type-option[data-type="individual"]').classList.add('selected');
+                    toggleChatNameField(false); // Індивідуальний чат не потребує назви
+                    
+                    const chatNameInput = document.getElementById('chatName');
+                    if (chatNameInput) chatNameInput.value = '';
+                    
+                    document.querySelectorAll('#studentList input[type="checkbox"]').forEach(cb => cb.checked = false);
+                    updateStudentSelection(); // Це викличе updateCreateButtonState
+                    document.getElementById('newChatModal').style.display = 'flex';
+                }
+            } catch (error) {
+                console.error('Error loading users for new chat:', error);
+            }
+        });
+    }
+
+    if (closeNewChatModal) closeNewChatModal.addEventListener('click', () => closeModal('newChatModal'));
+    if (cancelNewChatBtn) cancelNewChatBtn.addEventListener('click', () => closeModal('newChatModal'));
+    if (createChatBtn) createChatBtn.addEventListener('click', createNewChat);
+
+    document.querySelectorAll('.chat-type-option').forEach(option => {
+        option.addEventListener('click', function() {
+            document.querySelectorAll('.chat-type-option').forEach(opt => opt.classList.remove('selected'));
+            this.classList.add('selected');
+            const isGroup = this.dataset.type === 'group';
+            toggleChatNameField(isGroup);
+            document.querySelectorAll('#studentList input[type="checkbox"]').forEach(cb => cb.checked = false);
+            updateStudentSelection();
+        });
+    });
+
+    const studentSearch = document.getElementById('studentSearch');
+    if (studentSearch) studentSearch.addEventListener('input', function() { filterStudents(this.value); });
+
+    document.addEventListener('change', function(e) {
+        if (e.target.type === 'checkbox' && e.target.closest('#studentList')) {
+            const selectedType = document.querySelector('.chat-type-option.selected');
+            if (selectedType?.dataset.type === 'individual') {
+                document.querySelectorAll('#studentList input[type="checkbox"]').forEach(cb => {
+                    if (cb !== e.target) cb.checked = false;
+                });
+            }
+            updateStudentSelection();
+        }
+    });
 }
 
 function toggleChatNameField(show) {
     const chatNameGroup = document.getElementById('chatNameGroup');
-    chatNameGroup.style.display = show ? 'block' : 'none';
+    if (chatNameGroup) {
+        chatNameGroup.style.display = show ? 'block' : 'none';
+        if (!show) {
+            const chatNameInput = document.getElementById('chatName');
+            if (chatNameInput) chatNameInput.value = '';
+        }
+    }
 }
 
 function updateCreateButtonState() {
-    const selectedType = document.querySelector('.chat-type-option.selected').dataset.type;
-    const selectedStudents = document.querySelectorAll('#studentList input[type="checkbox"]:checked').length;
-    const chatName = document.getElementById('chatName').value.trim();
+    const selectedType = document.querySelector('.chat-type-option.selected');
+    if (!selectedType) return;
+
+    const selectedCheckboxes = document.querySelectorAll('#studentList input[type="checkbox"]:checked');
+    const selectedStudentsCount = selectedCheckboxes.length;
+    const chatName = document.getElementById('chatName')?.value.trim() || '';
     const createBtn = document.getElementById('createChatBtn');
 
+    if (!createBtn) return;
     let canCreate = false;
 
-    if (selectedType === 'individual') {
-        canCreate = selectedStudents === 1;
-    } else if (selectedType === 'group') {
-        canCreate = selectedStudents >= 1 && chatName.length > 0;
+    if (selectedType.dataset.type === 'individual') {
+        canCreate = selectedStudentsCount === 1;
+    } else { // group
+        canCreate = selectedStudentsCount >= 1 && chatName.length > 0; // Для групи потрібен хоча б 1 учасник (крім поточного) + назва
     }
-
     createBtn.disabled = !canCreate;
 }
 
-function createNewChat() {
-    const selectedType = document.querySelector('.chat-type-option.selected').dataset.type;
-    const selectedStudents = Array.from(document.querySelectorAll('#studentList input[type="checkbox"]:checked'))
-        .map(cb => {
-            const studentItem = cb.closest('.student-item');
-            const studentId = parseInt(studentItem.dataset.id);
-            return students.find(s => s.id === studentId);
-        });
-
-    if (selectedStudents.length === 0) return;
-
-    let chatName, chatId, chatAvatar;
-
-    if (selectedType === 'individual') {
-        const student = selectedStudents[0];
-        chatName = student.name;
-        chatId = student.name.toLowerCase().replace(' ', '');
-        chatAvatar = student.avatar;
-    } else {
-        chatName = document.getElementById('chatName').value.trim();
-        chatId = 'group_' + Date.now();
-        chatAvatar = chatName.charAt(0).toUpperCase();
-    }
-
-    // Перевірка чи не існує вже такий чат
-    if (chats[chatId]) {
-        alert('Chat with this name already exists!');
-        return;
-    }
-
-    // Створення нового чату
-    chats[chatId] = {
-        id: chatId,
-        name: chatName,
-        type: selectedType,
-        avatar: chatAvatar,
-        status: 'online',
-        members: ['user', ...selectedStudents.map(s => s.name.toLowerCase().replace(' ', ''))],
-        messages: [{
-            id: ++messageIdCounter,
-            sender: 'system',
-            content: `${selectedType === 'group' ? 'Group chat' : 'Chat'} created successfully!`,
-            timestamp: getCurrentTime(),
-            avatar: 'S'
-        }]
-    };
-
-    // Оновлення інтерфейсу
-    renderChatList();
-    switchChat(chatId);
-    closeModal('newChatModal');
-}
-
-function filterStudents(searchTerm, listId) {
-    const studentItems = document.querySelectorAll(`#${listId} .student-item`);
-    
+function filterStudents(searchTerm) {
+    const studentItems = document.querySelectorAll('#studentList .student-item');
     studentItems.forEach(item => {
         const studentName = item.querySelector('.student-name').textContent.toLowerCase();
         const studentGroup = item.querySelector('.student-group').textContent.toLowerCase();
-        const matches = studentName.includes(searchTerm.toLowerCase()) || 
-                       studentGroup.includes(searchTerm.toLowerCase());
-        
+        const matches = studentName.includes(searchTerm.toLowerCase()) || studentGroup.includes(searchTerm.toLowerCase());
         item.style.display = matches ? 'flex' : 'none';
     });
 }
 
-function updateStudentSelection(listId, countId) {
-    const selectedCount = document.querySelectorAll(`#${listId} input[type="checkbox"]:checked`).length;
-    const countElement = document.getElementById(countId);
+function updateStudentSelection() {
+    const selectedCount = document.querySelectorAll('#studentList input[type="checkbox"]:checked').length;
+    const countElement = document.getElementById('selectedCount');
     
-    if (selectedCount > 0) {
-        countElement.textContent = `Selected: ${selectedCount} student${selectedCount > 1 ? 's' : ''}`;
-        countElement.style.display = 'block';
-    } else {
-        countElement.style.display = 'none';
-    }
-
-    // Оновлення візуального стану елементів
-    document.querySelectorAll(`#${listId} .student-item`).forEach(item => {
-        const checkbox = item.querySelector('input[type="checkbox"]');
-        if (checkbox.checked) {
-            item.classList.add('selected');
+    if (countElement) {
+        if (selectedCount > 0) {
+            countElement.textContent = `Вибрано: ${selectedCount} користувач${selectedCount === 1 ? '' : (selectedCount > 1 && selectedCount < 5 ? 'і' : 'ів')}`;
+            countElement.style.display = 'block';
         } else {
-            item.classList.remove('selected');
-        }
-    });
-}
-
-function openAddMembersModal() {
-    document.getElementById('addMembersModal').style.display = 'flex';
-}
-
-function openChatInfoModal() {
-    const chat = chats[currentChat];
-    document.getElementById('editChatName').value = chat.name;
-    document.getElementById('chatDescription').value = chat.description || '';
-    
-    // Відображення учасників
-    const membersList = document.getElementById('chatMembersList');
-    membersList.innerHTML = '';
-    
-    chat.members.forEach(memberId => {
-        const member = memberId === 'user' ? {name: 'You', group: 'Administrator', avatar: 'M'} :
-                      memberId === 'admin' ? {name: 'Admin', group: 'Administrator', avatar: 'A'} :
-                      students.find(s => s.name.toLowerCase().replace(' ', '') === memberId) || 
-                      {name: memberId, group: 'Unknown', avatar: memberId.charAt(0).toUpperCase()};
-        
-        const memberElement = document.createElement('div');
-        memberElement.className = 'student-item';
-        memberElement.innerHTML = `
-            <div class="student-info">
-                <div class="student-name">${member.name}</div>
-                <div class="student-group">${member.group}</div>
-            </div>
-            <div class="student-avatar">${member.avatar}</div>
-        `;
-        membersList.appendChild(memberElement);
-    });
-    
-    document.getElementById('chatInfoModal').style.display = 'flex';
-}
-
-function saveChatInfo() {
-    const chat = chats[currentChat];
-    const newName = document.getElementById('editChatName').value.trim();
-    const newDescription = document.getElementById('chatDescription').value.trim();
-    
-    if (newName && newName !== chat.name) {
-        chat.name = newName;
-        document.getElementById('chatTitle').textContent = newName;
-        renderChatList();
-    }
-    
-    chat.description = newDescription;
-    closeModal('chatInfoModal');
-}
-
-function closeModal(modalId) {
-    document.getElementById(modalId).style.display = 'none';
-}
-
-// Обробники для кликабельних елементів студентів
-document.addEventListener('click', function(e) {
-    if (e.target.closest('.student-item') && !e.target.matches('input[type="checkbox"]')) {
-        const studentItem = e.target.closest('.student-item');
-        const checkbox = studentItem.querySelector('input[type="checkbox"]');
-        if (checkbox) {
-            checkbox.checked = !checkbox.checked;
-            checkbox.dispatchEvent(new Event('change'));
+            countElement.style.display = 'none';
         }
     }
+    document.querySelectorAll('#studentList .student-item').forEach(item => {
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        item.classList.toggle('selected', checkbox?.checked);
+    });
+    updateCreateButtonState();
+}
+
+function createNewChat() {
+    const selectedType = document.querySelector('.chat-type-option.selected');
+    if (!selectedType) return;
+
+    const selectedUsersData = Array.from(document.querySelectorAll('#studentList input[type="checkbox"]:checked'))
+        .map(cb => ({
+            id: parseInt(cb.closest('.student-item').dataset.id),
+            username: cb.dataset.username 
+        }));
+    
+    if (selectedUsersData.length === 0) return;
+
+    if (selectedType.dataset.type === 'individual') {
+        if (selectedUsersData.length === 1) {
+            const userToChatWith = selectedUsersData[0];
+            // Перевірка, чи чат вже існує
+            const existingChatItem = document.querySelector(`.chat-item[data-chat="${userToChatWith.id}"][data-is-group="false"]`);
+            if (!existingChatItem) {
+                // Створюємо новий елемент чату в списку, якщо його немає
+                const chatItemsContainer = document.getElementById('chatItems');
+                const chatItem = document.createElement('div');
+                chatItem.className = 'chat-item';
+                chatItem.dataset.chat = userToChatWith.id;
+                chatItem.dataset.isGroup = "false";
+                chatItem.innerHTML = `
+                    <div class="chat-avatar">${userToChatWith.username[0].toUpperCase()}</div>
+                    <div class="chat-info">
+                        <div class="chat-name">${userToChatWith.username}</div>
+                        <p class="chat-preview">Click to start chatting</p>
+                        <div class="chat-status status-offline">Offline</div> <!-- Статус оновиться пізніше -->
+                    </div>
+                `;
+                chatItem.addEventListener('click', () => switchChat(userToChatWith.id, false));
+                chatItemsContainer.appendChild(chatItem);
+                updateUserStatuses(); // Оновити статус новоствореного чату
+            }
+            switchChat(userToChatWith.id, false);
+        }
+    } else { // group
+        const chatName = document.getElementById('chatName').value.trim();
+        if (chatName && selectedUsersData.length > 0) {
+            const memberIds = selectedUsersData.map(user => user.id);
+            socket.emit('create_group_chat', {
+                name: chatName,
+                members: [...memberIds, currentUserId]
+            });
+        }
+    }
+    closeModal('newChatModal');
+}
+
+// Обробка події створення групового чату
+socket.on('group_chat_created', (groupData) => {
+    const chatItemsContainer = document.getElementById('chatItems');
+    const existingItem = chatItemsContainer.querySelector(`.chat-item[data-chat="${groupData.id}"][data-is-group="true"]`);
+    if(existingItem) return; // Якщо чат вже є, не додавати
+
+    const chatItem = document.createElement('div');
+    chatItem.className = 'chat-item group-chat-item';
+    chatItem.dataset.chat = groupData.id;
+    chatItem.dataset.isGroup = "true";
+    chatItem.innerHTML = `
+        <div class="chat-avatar"><i class="fas fa-users"></i></div>
+        <div class="chat-info">
+            <div class="chat-name">${groupData.name}</div>
+            <p class="chat-preview">${groupData.message ? groupData.message.message : 'Group chat created'}</p>
+        </div>
+    `;
+    chatItem.addEventListener('click', () => switchChat(groupData.id, true));
+    chatItemsContainer.appendChild(chatItem);
+
+    // Автоматично переключитися на новостворений груповий чат
+    switchChat(groupData.id, true);
+    if(groupData.message) displayMessage(groupData.message); // Відобразити системне повідомлення
 });
 
-// Симуляція онлайн статусів
-setInterval(() => {
-    Object.values(chats).forEach(chat => {
-        if (chat.id !== 'admin') {
-            chat.status = Math.random() > 0.3 ? 'online' : 'offline';
+
+function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'none';
+        const chatNameInput = document.getElementById('chatName');
+        if (chatNameInput) chatNameInput.value = '';
+        document.querySelectorAll('#studentList input[type="checkbox"]').forEach(cb => cb.checked = false);
+        const studentSearchInput = document.getElementById('studentSearch');
+        if (studentSearchInput) {
+            studentSearchInput.value = '';
+            filterStudents('');
         }
-    });
-    renderChatList();
-}, 30000); // Оновлення кожні 30 секунд
+        updateStudentSelection();
+    }
+}
+
+document.addEventListener('DOMContentLoaded', async function() {
+    console.log("Chat script DOMContentLoaded");
+    await initializeChat(); // initializeChat тепер обробляє параметри URL
+
+    const bell = document.querySelector('#notification .bell');
+    if (bell) {
+        bell.addEventListener('click', function (e) {
+            if (!localStorage.getItem('isLoggedIn')) {
+                e.preventDefault();
+                alert('Please log in to view messages.');
+                return;
+            }
+            // На сторінці messages.html клік на дзвіночок просто відкриває/закриває bmodal,
+            // або нічого не робить, якщо bmodal показується при наведенні.
+            // Перехід на messages.html тут не потрібен.
+            // const bmodal = document.querySelector('#notification .bmodal');
+            // if (bmodal) bmodal.style.display = bmodal.style.display === 'block' ? 'none' : 'block';
+        });
+    }
+});

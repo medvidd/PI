@@ -26,41 +26,15 @@
                     <span class="notification-dot"></span>
                 </a>
                 <div class="bmodal">
-                    <div class="message">
-                        <img src="/PI/images/account.png" alt="User picture" class="avatar">
-                        <div class="message-box">
-                            <div class="message-content">
-                                <h2>Name Surname</h2>
-                                <p>New message received!</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="message">
-                        <img src="/PI/images/account.png" alt="User picture" class="avatar">
-                        <div class="message-box">
-                            <div class="message-content">
-                                <h2>Name Surname</h2>
-                                <p>New message received!</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="message">
-                        <img src="/PI/images/account.png" alt="User picture" class="avatar">
-                        <div class="message-box">
-                            <div class="message-content">
-                                <h2>Name Surname</h2>
-                                <p>New message received!</p>
-                            </div>
-                        </div>
-                    </div>
+                    <!-- Сповіщення будуть додаватися динамічно -->
                 </div>
             </div>
-            <div class="autorization" id="loginButton">
-                <img class="authorization" src="/PI/images/account.png" alt="User picture" width="50" height="50">
+            <div class="autorization" id="loginButton" role="button" tabindex="0">
+                <img src="/PI/images/account.png" alt="User picture" width="50" height="50">
                 <h1 class="actext">Authorization</h1> 
             </div>
             <div class="account" id="account" style="display: none;">
-                <img class="account" src="/PI/images/account.png" alt="User picture" width="50" height="50">
+                <img src="/PI/images/account.png" alt="User picture" width="50" height="50">
                 <h1 class="actext" id="usernameDisplay">Name Surname</h1> 
                 <div class="modal">
                     <a href="profile.html">Profile</a>
@@ -69,11 +43,11 @@
             </div>
         </div> 
     </header>
-    <div class="modal-login" id="modalLogin" style="display: none;">
-        <div class="modal-content">
+    <div class="modal-login" id="modalLogin">
+        <div class="modal-content" onclick="event.stopPropagation();">
             <div class="modal-header">
                 <h2>Authorize</h2>
-                <span id="closeLoginModal" class="close">×</span>
+                <span id="closeLoginModal" class="close" role="button" tabindex="0">×</span>
             </div>
             <div class="modal-body">
                 <form id="loginForm">
@@ -91,7 +65,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="button-cancel" id="cancelLoginBtn">Cancel</button>
-                <button type="submit" form="loginForm" class="button-create" id="loginBtn">Login</button>
+                <button type="submit" form="loginForm" class="button-create">Login</button>
             </div>
         </div>
     </div>
@@ -240,6 +214,7 @@
             </div>
         </div>
     </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
     <script src="/PI/script.js" defer></script>
 </body>
 </html>
