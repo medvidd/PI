@@ -126,7 +126,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     console.log("Hello from script.js!");
     await checkLoginStatus();
     initializeAuthHandlers();
-    updateNotificationDotState(); // Ініціалізація стану крапки при завантаженні
+    updateGlobalNotificationDotState(); // Використовуємо оновлену функцію
 
     const notificationBell = document.querySelector('.notification .bell');
     const notificationDot = document.querySelector('.notification .notification-dot'); // Для обробки кліку на дзвінок
@@ -904,8 +904,17 @@ function showGlobalNotification(messageData) {
         // На сторінці messages.html сповіщеннями керує chat_script.js
         return;
     }
+    // Переконуємося, що messageData та messageData.sender існують
+    if (!messageData || !messageData.sender) {
+        console.error('showGlobalNotification: messageData or messageData.sender is undefined', messageData);
+        return;
+    }
 
-    const { sender, message, groupChatId, groupName } = messageData;
+    // Використовуємо group_chat_id та group_name, які надходять від сервера
+    const { sender, message } = messageData;
+    const actualGroupChatIdFromServer = messageData.group_chat_id; 
+    const actualGroupNameFromServer = messageData.group_name;
+
     const notificationContainer = document.getElementById('notification');
     if (!notificationContainer) return;
 
@@ -913,8 +922,9 @@ function showGlobalNotification(messageData) {
     const bellIcon = notificationContainer.querySelector('.bell');
 
     const MAX_NOTIFICATIONS = 3;
-    const senderIdForNotification = groupChatId ? `group_${groupChatId}` : sender.id.toString();
-    const displayName = groupChatId ? (groupName || `Group ${groupChatId}`) : sender.username;
+    // Визначаємо ID для сповіщення та ім'я для відображення
+    const senderIdForNotification = actualGroupChatIdFromServer ? `group_${actualGroupChatIdFromServer}` : sender.id.toString();
+    const displayName = actualGroupChatIdFromServer ? (actualGroupNameFromServer || `Group ${actualGroupChatIdFromServer}`) : sender.username;
 
     // Видаляємо старе сповіщення від цього ж джерела, якщо воно є
     const existingNotification = bmodal.querySelector(`.message[data-source-id="${senderIdForNotification}"]`);
@@ -930,17 +940,18 @@ function showGlobalNotification(messageData) {
         <div class="message-box">
             <div class="message-content">
                 <h2>${displayName}</h2>
-                <p>${groupChatId && sender.username ? sender.username + ': ' : ''}${message}</p>
+                <p>${actualGroupChatIdFromServer && sender.username ? sender.username + ': ' : ''}${message}</p>
             </div>
         </div>
     `;
 
     newMessageDiv.addEventListener('click', () => {
         newMessageDiv.remove();
-        updateGlobalNotificationDotState();
-        const targetUrl = groupChatId
-            ? `/PI/messages.html?group_chat=${groupChatId}`
-            : `/PI/messages.html?chat=${sender.id}`;
+        updateGlobalNotificationDotState(); // Оновлюємо крапку
+        // Формуємо URL для переходу в чат
+        const targetChatId = actualGroupChatIdFromServer ? actualGroupChatIdFromServer : sender.id;
+        const isGroup = !!actualGroupChatIdFromServer;
+        const targetUrl = `/PI/messages.html?${isGroup ? 'group_chat=' : 'chat='}${targetChatId}`;
         window.location.href = targetUrl;
     });
 
