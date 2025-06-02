@@ -1,11 +1,39 @@
 /* jshint esversion: 6 */
 
-let socket;
-try {
-    socket = io('http://localhost:3000'); // Переконайтесь, що URL правильний
-    console.log('Socket.IO успішно підключено (script.js)');
-} catch (error) {
-    console.error('Помилка підключення Socket.IO (script.js):', error);
+let globalPageSocket; // Змінено ім'я змінної
+let globalCurrentUserId = null; // Для збереження ID поточного користувача на глобальному рівні
+
+// Перевіряємо, чи ми НЕ на сторінці messages.html, щоб ініціалізувати глобальний сокет
+if (typeof io !== 'undefined' && !window.location.pathname.endsWith('messages.html')) {
+    try {
+        globalPageSocket = io('http://localhost:3000');
+        console.log('Socket.IO успішно підключено (script.js - globalPageSocket)');
+
+        // Слухаємо подію new_message тільки якщо це globalPageSocket
+        globalPageSocket.on('new_message', (messageData) => {
+            console.log('script.js (global) received new_message:', messageData);
+            if (messageData && messageData.sender && messageData.sender.id !== globalCurrentUserId) {
+                showGlobalNotification(messageData); // Нова функція для показу сповіщень на інших сторінках
+            }
+        });
+
+        globalPageSocket.on('user_statuses', ({ statuses }) => {
+            // console.log('Global script received user_statuses:', statuses);
+            // Тут можна додати логіку для оновлення статусів, якщо це потрібно на інших сторінках
+        });
+
+        globalPageSocket.on('connect_error', (err) => {
+            console.error('Помилка підключення globalPageSocket (script.js):', err.message);
+        });
+
+
+    } catch (error) {
+        console.error('Помилка ініціалізації Socket.IO (script.js - globalPageSocket):', error);
+    }
+} else if (window.location.pathname.endsWith('messages.html')) {
+    console.log('script.js на messages.html: globalPageSocket не ініціалізовано, керування сокетом у chat_script.js');
+} else {
+    console.error('Socket.IO (io) не визначено. Неможливо підключитися (script.js).');
 }
 
 let currentUserId = null;
@@ -153,6 +181,50 @@ document.addEventListener('DOMContentLoaded', async function () {
     if (document.getElementById('studentTable')) {
         initializeStudentPage();
     }
+
+    // Перевірка стану логіна при завантаженні сторінки
+    if (localStorage.getItem('isLoggedIn') === 'true') {
+        const username = localStorage.getItem('username');
+        try {
+            // Повторно отримуємо ID користувача, оскільки він міг змінитися або сесія могла закінчитися
+            const userResponse = await fetch('/PI/api/get_user_id.php', { headers: { 'Cache-Control': 'no-cache' }});
+            const userData = await userResponse.json();
+            if (userData.success && userData.userId) {
+                globalCurrentUserId = userData.userId;
+                updateHeaderUI(username);
+            } else {
+                // Якщо не вдалося отримати ID, вважаємо, що користувач не залогінений
+                localStorage.removeItem('isLoggedIn');
+                localStorage.removeItem('username');
+                updateHeaderUIForLoggedOutUser();
+            }
+        } catch (error) {
+            console.error("Error re-fetching user_id on DOMContentLoaded:", error);
+            localStorage.removeItem('isLoggedIn');
+            localStorage.removeItem('username');
+            updateHeaderUIForLoggedOutUser();
+        }
+    } else {
+        updateHeaderUIForLoggedOutUser();
+    }
+
+    const bell = document.querySelector('.notification .bell');
+    if (bell) {
+        bell.addEventListener('click', function (e) {
+            if (!localStorage.getItem('isLoggedIn')) {
+                e.preventDefault();
+                alert('Please log in to view messages.');
+                return;
+            }
+            // Якщо ми не на сторінці повідомлень, переходимо на неї
+            if (!window.location.pathname.endsWith('messages.html')) {
+                e.preventDefault(); // Запобігаємо стандартній дії, якщо це посилання
+                window.location.href = '/PI/messages.html';
+            }
+            // На messages.html, ця логіка не потрібна, бо там керує chat_script.js
+        });
+    }
+    updateNotificationDotState(); // Початкове оновлення стану крапки
 });
 
 //============================ AUTHORIZATION =============================
@@ -171,9 +243,9 @@ async function checkLoginStatus() {
 
             const userResponse = await fetch('/PI/api/get_user_id.php');
             const userData = await userResponse.json();
-            if (userData.success && socket) {
+            if (userData.success && globalPageSocket && globalPageSocket.connected) {
                 currentUserId = userData.userId;
-                socket.emit('auth', { username: currentUsername, id: currentUserId });
+                globalPageSocket.emit('auth', { username: currentUsername, id: currentUserId });
             }
 
             updateUIForLoggedInUser();
@@ -219,6 +291,15 @@ function updateUIForLoggedInUser() {
         addButton.style.cursor = 'pointer';
         addButton.disabled = false;
     }
+
+    // Якщо є globalPageSocket, авторизуємо користувача
+    if (globalPageSocket && globalPageSocket.connected && currentUserId) {
+        globalPageSocket.emit('auth', {
+            username: username,
+            id: currentUserId
+        });
+        globalPageSocket.emit('user_activity', { userId: currentUserId, page: window.location.pathname });
+    }
 }
 
 function updateUIForLoggedOutUser() {
@@ -233,6 +314,10 @@ function updateUIForLoggedOutUser() {
     if (addButton) {
         addButton.style.cursor = 'not-allowed';
         addButton.disabled = true;
+    }
+
+    if (globalPageSocket && globalPageSocket.connected && currentUserId) {
+        globalPageSocket.emit('logout', { userId: currentUserId });
     }
 }
 
@@ -327,9 +412,9 @@ function initializeAuthHandlers() {
                     const userResponse = await fetch('/PI/api/get_user_id.php');
                     const userData = await userResponse.json();
                     
-                    if (userData.success && socket) {
+                    if (userData.success && globalPageSocket && globalPageSocket.connected) {
                         currentUserId = userData.userId; // Оновлюємо глобальну змінну
-                        socket.emit('auth', {
+                        globalPageSocket.emit('auth', {
                             username: usernameVal,
                             id: userData.userId
                         });
@@ -370,7 +455,7 @@ if (document.getElementById('logoutButton')) {
                 selectedStudentIds = [];
                 currentUserId = null;
                 currentUsername = null;
-                if(socket) socket.disconnect(); // Розриваємо з'єднання при виході
+                if(globalPageSocket && globalPageSocket.connected) globalPageSocket.disconnect(); // Розриваємо з'єднання при виході
                 
                 updateUIForLoggedOutUser();
                 if (document.getElementById('studentTable')) {
@@ -813,18 +898,114 @@ function displayServerErrors(formId, errors) {
     }
 }
 
+// Нова функція для відображення сповіщень на НЕ-messages.html сторінках
+function showGlobalNotification(messageData) {
+    if (window.location.pathname.endsWith('messages.html')) {
+        // На сторінці messages.html сповіщеннями керує chat_script.js
+        return;
+    }
 
-// Обробник нових повідомлень для script.js
-if (socket) {
-    socket.on('new_message', (messageData) => {
-        if (currentUserId === null) { // Якщо користувач не авторизований, не показуємо сповіщення
-            console.log("User not logged in, notification suppressed.");
-            return;
-        }
-        // Переконуємося, що це не повідомлення поточного користувача
-        // і що ми не на сторінці messages.html (для цього є chat_script.js)
-        if (messageData.sender.id !== currentUserId && !window.location.pathname.endsWith('messages.html')) {
-            showNotification(messageData);
-        }
+    const { sender, message, groupChatId, groupName } = messageData;
+    const notificationContainer = document.getElementById('notification');
+    if (!notificationContainer) return;
+
+    const bmodal = notificationContainer.querySelector('.bmodal');
+    const bellIcon = notificationContainer.querySelector('.bell');
+
+    const MAX_NOTIFICATIONS = 3;
+    const senderIdForNotification = groupChatId ? `group_${groupChatId}` : sender.id.toString();
+    const displayName = groupChatId ? (groupName || `Group ${groupChatId}`) : sender.username;
+
+    // Видаляємо старе сповіщення від цього ж джерела, якщо воно є
+    const existingNotification = bmodal.querySelector(`.message[data-source-id="${senderIdForNotification}"]`);
+    if (existingNotification) {
+        existingNotification.remove();
+    }
+
+    const newMessageDiv = document.createElement('div');
+    newMessageDiv.className = 'message';
+    newMessageDiv.dataset.sourceId = senderIdForNotification; // Для ідентифікації джерела
+    newMessageDiv.innerHTML = `
+        <img src="/PI/images/account.png" alt="User picture" class="avatar">
+        <div class="message-box">
+            <div class="message-content">
+                <h2>${displayName}</h2>
+                <p>${groupChatId && sender.username ? sender.username + ': ' : ''}${message}</p>
+            </div>
+        </div>
+    `;
+
+    newMessageDiv.addEventListener('click', () => {
+        newMessageDiv.remove();
+        updateGlobalNotificationDotState();
+        const targetUrl = groupChatId
+            ? `/PI/messages.html?group_chat=${groupChatId}`
+            : `/PI/messages.html?chat=${sender.id}`;
+        window.location.href = targetUrl;
     });
+
+    bmodal.prepend(newMessageDiv);
+
+    while (bmodal.children.length > MAX_NOTIFICATIONS) {
+        bmodal.removeChild(bmodal.lastChild);
+    }
+
+    notificationContainer.style.display = 'block';
+    updateGlobalNotificationDotState(); // Оновлюємо стан крапки
+
+    if (bellIcon) {
+        bellIcon.classList.add('ringing');
+        setTimeout(() => {
+            bellIcon.classList.remove('ringing');
+        }, 600);
+    }
+}
+
+// Оновлена функція для стану крапки сповіщень
+function updateGlobalNotificationDotState() {
+    const notificationContainer = document.getElementById('notification');
+    if (!notificationContainer) return;
+    const notificationDot = notificationContainer.querySelector('.notification-dot');
+    const bmodal = notificationContainer.querySelector('.bmodal');
+
+    if (bmodal && notificationDot) {
+        if (bmodal.children.length > 0) {
+            notificationDot.style.display = 'block';
+            notificationDot.classList.add('active');
+        } else {
+            notificationDot.style.display = 'none';
+            notificationDot.classList.remove('active');
+        }
+    }
+}
+
+function updateHeaderUI(username) {
+    const loginButton = document.getElementById('loginButton');
+    const account = document.getElementById('account');
+    const notificationElement = document.getElementById('notification');
+    const usernameDisplay = document.getElementById('usernameDisplay');
+
+    if (loginButton) loginButton.style.display = 'none';
+    if (account) account.style.display = 'flex';
+    if (notificationElement) notificationElement.style.display = 'block'; // Показуємо "дзвіночок"
+    if (usernameDisplay) usernameDisplay.textContent = username;
+
+    // Якщо є globalPageSocket, авторизуємо користувача
+    if (globalPageSocket && globalPageSocket.connected && globalCurrentUserId) {
+        globalPageSocket.emit('auth', {
+            username: username,
+            id: globalCurrentUserId
+        });
+        globalPageSocket.emit('user_activity', { userId: globalCurrentUserId, page: window.location.pathname });
+    }
+}
+
+function updateHeaderUIForLoggedOutUser() {
+    const loginButton = document.getElementById('loginButton');
+    const account = document.getElementById('account');
+    const notificationElement = document.getElementById('notification'); // Отримуємо елемент сповіщень
+
+    if (loginButton) loginButton.style.display = 'flex';
+    if (account) account.style.display = 'none';
+    if (notificationElement) notificationElement.style.display = 'none'; // Ховаємо "дзвіночок"
 }

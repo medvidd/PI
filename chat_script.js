@@ -1,8 +1,15 @@
 // --- START OF FILE chat_script.js ---
 
-// Підключення до сервера Socket.IO
-const socket = io('http://localhost:3000');
-console.log('Socket.IO підключено (chat_script.js)');
+// Нове оголошення сокету для chat_script.js
+let socket; // Оголошуємо тут, щоб було доступно скрізь у файлі
+if (typeof io !== 'undefined') {
+    socket = io('http://localhost:3000');
+    window.chatSocket = socket; // Зберігаємо сокет чату в глобальний об'єкт window
+    console.log('Socket.IO підключено (chat_script.js) і збережено в window.chatSocket');
+} else {
+    console.error('FATAL: io is not defined. Socket.IO library not loaded. (chat_script.js)');
+    // Можливо, тут варто запобігти подальшому виконанню скрипта, якщо сокет критичний
+}
 
 // Глобальні змінні
 let currentUserId = null;
@@ -55,36 +62,52 @@ function updateChatNotificationDotState() {
 
 // Функція для показу сповіщення (з script.js, адаптована)
 function showChatNotification(messageData) {
-    const { sender, message, groupChatId, groupName } = messageData;
+    console.log('[CHAT_SCRIPT] showChatNotification called with:', JSON.stringify(messageData, null, 2)); // Логування вхідних даних
+    // Переконуємося, що messageData та messageData.sender існують
+    if (!messageData || !messageData.sender) {
+        console.error('showChatNotification: messageData or messageData.sender is undefined', messageData);
+        return;
+    }
+
+    const { sender, message, recipient_id } = messageData;
+    const actualGroupChatIdFromServer = messageData.group_chat_id; // Це поле від сервера
+    const actualGroupNameFromServer = messageData.group_name;     // Це поле від сервера
+
     const notificationContainer = document.getElementById('notification');
     if (!notificationContainer) return;
 
     const notificationDot = notificationContainer.querySelector('.notification-dot');
     const bmodal = notificationContainer.querySelector('.bmodal');
-    const bellIcon = notificationContainer.querySelector('.bell'); // Renamed to avoid conflict with bell variable
+    const bellIcon = notificationContainer.querySelector('.bell');
 
-    // Check if this notification is for the currently active chat
     const chatWindowVisible = document.getElementById('messagesArea') && document.getElementById('messagesArea').offsetParent !== null;
     let isChatActiveWithMessageSource = false;
-    if (chatWindowVisible) { // Only suppress if the chat window itself is visible
-        if (groupChatId) {
-            isChatActiveWithMessageSource = currentGroupChat === groupChatId;
-        } else {
-            // For 1-on-1 chats:
-            // Message from the other user in the active chat OR our own message to the active chat user
-            isChatActiveWithMessageSource = (currentChat === sender.id && sender.id !== currentUserId) || 
-                                          (currentChat === recipient_id && sender.id === currentUserId);
+    if (chatWindowVisible) {
+        if (actualGroupChatIdFromServer) {
+            isChatActiveWithMessageSource = currentGroupChat === actualGroupChatIdFromServer;
+        } else if (currentChat) { // Тільки для 1-на-1, якщо currentChat існує
+            isChatActiveWithMessageSource = (currentChat.toString() === sender.id.toString() && sender.id !== currentUserId) ||
+                                          (currentChat.toString() === recipient_id?.toString() && sender.id === currentUserId);
         }
     }
 
-    if (isChatActiveWithMessageSource) {
+    if (isChatActiveWithMessageSource && sender.id !== currentUserId) { // Якщо чат активний І повідомлення від іншого
         // console.log("Chat Notification suppressed: user in active chat with sender/group (chat_script.js).");
-        return; // Don't show notification if chat is active
+        // Очистимо сповіщення, якщо воно було для цього чату, оскільки користувач вже бачить повідомлення
+        clearChatNotificationForSource(actualGroupChatIdFromServer ? actualGroupChatIdFromServer : sender.id, !!actualGroupChatIdFromServer);
+        return; 
+    } 
+    
+    // Не показувати сповіщення для власних повідомлень
+    if (sender.id === currentUserId) {
+        // console.log("Chat Notification suppressed: message is from current user (chat_script.js).");
+        return;
     }
 
     const MAX_NOTIFICATIONS = 3;
-    const senderIdForNotification = groupChatId ? `group_${groupChatId}` : sender.id.toString();
-    const displayName = groupChatId ? (groupName || `Group ${groupChatId}`) : sender.username;
+    const senderIdForNotification = actualGroupChatIdFromServer ? `group_${actualGroupChatIdFromServer}` : sender.id.toString();
+    const displayName = actualGroupChatIdFromServer ? (actualGroupNameFromServer || `Group ${actualGroupChatIdFromServer}`) : sender.username;
+    console.log(`[CHAT_SCRIPT] showChatNotification: senderIdForNotification=${senderIdForNotification}, displayName=${displayName}`);
 
     const existingNotification = bmodal.querySelector(`.message[data-source-id="${senderIdForNotification}"]`);
     if (existingNotification) {
@@ -92,14 +115,14 @@ function showChatNotification(messageData) {
     }
 
     const newMessageDiv = document.createElement('div');
-    newMessageDiv.className = 'message'; // This is for bmodal notifications
+    newMessageDiv.className = 'message';
     newMessageDiv.dataset.sourceId = senderIdForNotification;
     newMessageDiv.innerHTML = `
         <img src="/PI/images/account.png" alt="User picture" class="avatar">
         <div class="message-box">
             <div class="message-content">
                 <h2>${displayName}</h2>
-                <p>${groupChatId ? sender.username + ': ' : ''}${message}</p>
+                <p>${actualGroupChatIdFromServer ? sender.username + ': ' : ''}${message}</p>
             </div>
         </div>
     `;
@@ -107,13 +130,13 @@ function showChatNotification(messageData) {
     newMessageDiv.addEventListener('click', () => {
         newMessageDiv.remove();
         updateChatNotificationDotState();
-        const targetUrl = groupChatId 
-            ? `messages.html?group_chat=${groupChatId}` // Stay on page, switch chat
-            : `messages.html?chat=${sender.id}`;
-        // If already on messages.html, just switch chat, otherwise navigate
+        const targetChatId = actualGroupChatIdFromServer ? actualGroupChatIdFromServer : sender.id;
+        const isGroup = !!actualGroupChatIdFromServer;
+        
         if (window.location.pathname.endsWith('messages.html')) {
-            switchChat(groupChatId ? groupChatId : sender.id, !!groupChatId);
+            switchChat(targetChatId, isGroup);
         } else {
+            const targetUrl = `messages.html?${isGroup ? 'group_chat=' : 'chat='}${targetChatId}`;
             window.location.href = targetUrl;
         }
     });
@@ -192,7 +215,7 @@ async function initializeChat() {
                 if (chatIdFromUrl) {
                     switchChat(parseInt(chatIdFromUrl), false);
                 } else if (groupChatIdFromUrl) {
-                    switchChat(parseInt(groupChatIdFromUrl), true);
+                    switchChat(groupChatIdFromUrl, true);
                 }
 
             } else {
@@ -312,7 +335,9 @@ function sendMessageToChat(recipientsIgnored, message) { // Renamed
         console.error('User not authenticated or no chat selected for sending message.');
         return;
     }
-    
+    // Логуємо значення безпосередньо перед використанням
+    console.log(`[CHAT_SCRIPT] sendMessageToChat: currentChat=${currentChat}, currentGroupChat=${currentGroupChat}`); 
+
     const messageData = {
         message: message,
         sender: {
@@ -339,30 +364,50 @@ function sendMessageToChat(recipientsIgnored, message) { // Renamed
 }
 
 socket.on('new_message', (messageData) => {
-    console.log('[CHAT_SCRIPT] Received new_message:', JSON.parse(JSON.stringify(messageData)));
+    console.log('[CHAT_SCRIPT] Raw new_message received from server:', JSON.stringify(messageData, null, 2)); // Детальне логування
+    console.log('[CHAT_SCRIPT] Received new_message (parsed object):', messageData);
     console.log('[CHAT_SCRIPT] Current state: currentUserId:', currentUserId, 'currentChat:', currentChat, 'currentGroupChat:', currentGroupChat);
 
-    const recipient_id_from_data = messageData.recipient_id; // Зберігаємо перед можливою зміною messageData
+    // Перевіряємо, чи є дані про відправника
+    if (!messageData || !messageData.sender || typeof messageData.sender.id === 'undefined') {
+        console.error('[CHAT_SCRIPT] Invalid messageData received (no sender or sender.id):', messageData);
+        return;
+    }
 
-    const isActiveChat = (messageData.groupChatId && messageData.groupChatId === currentGroupChat) ||
-                         (!messageData.groupChatId && messageData.sender.id === currentChat && messageData.sender.id !== currentUserId) || 
-                         (!messageData.groupChatId && recipient_id_from_data === currentChat && messageData.sender.id === currentUserId);
-                        
-    console.log('[CHAT_SCRIPT] isActiveChat evaluation:', isActiveChat);
+    const isMessageForCurrentGroupChat = messageData.group_chat_id && messageData.group_chat_id === currentGroupChat;
+    
+    const isMessageForCurrentPrivateChat = !messageData.group_chat_id && currentChat && 
+                                          ((messageData.sender.id === currentChat && messageData.sender.id !== currentUserId) || 
+                                           (messageData.recipient_id === currentChat && messageData.sender.id === currentUserId));
+
+    const isActiveChat = isMessageForCurrentGroupChat || isMessageForCurrentPrivateChat;
+
+    console.log(`[CHAT_SCRIPT] isMessageForCurrentGroupChat: ${isMessageForCurrentGroupChat}, isMessageForCurrentPrivateChat: ${isMessageForCurrentPrivateChat}, isActiveChat evaluation: ${isActiveChat}`);
 
     if (isActiveChat) {
         console.log('[CHAT_SCRIPT] Message is for the active chat. Calling displayMessageInChat.');
-        displayMessageInChat(messageData);
+        displayMessageInChat(messageData); 
+    }
+
+    if (messageData.sender.id !== currentUserId) { 
+        if (!isActiveChat) {
+            console.log('[CHAT_SCRIPT] Message is from another user AND NOT for active chat. Calling showChatNotification.');
+            showChatNotification(messageData);
+        } else {
+            console.log('[CHAT_SCRIPT] Message is from another user FOR active chat. Chat updated. Not showing bell notification.');
+            // Якщо повідомлення для активного чату, але від іншого користувача,
+            // сповіщення "дзвіночка" не потрібне, бо користувач бачить повідомлення.
+            // Але, можливо, потрібно очистити старе сповіщення для цього чату, якщо воно було.
+            clearChatNotificationForSource(messageData.group_chat_id ? messageData.group_chat_id : messageData.sender.id, !!messageData.group_chat_id);
+        }
     } else {
-        console.log('[CHAT_SCRIPT] Message is NOT for the active chat.');
+        console.log('[CHAT_SCRIPT] Message is from current user. Not showing bell notification.');
+        // Якщо це своє повідомлення (наприклад, з іншої вкладки) і воно для активного чату, displayMessageInChat вже викликано.
+        // Якщо для неактивного, то сповіщення не потрібне.
     }
     
-    if (messageData.sender.id !== currentUserId) { 
-        console.log('[CHAT_SCRIPT] Message is from another user. Calling showChatNotification.');
-        showChatNotification(messageData);
-    } else {
-        console.log('[CHAT_SCRIPT] Message is from current user. Not showing notification via showChatNotification.');
-    }
+    // Оновлюємо прев'ю в списку чатів для всіх нових повідомлень
+    updateChatPreviewInList(messageData);
 });
 
 socket.on('message_history', (data) => {
@@ -386,8 +431,8 @@ socket.on('message_history', (data) => {
     }
 });
 
-function displayMessageInChat(messageData) { // Renamed
-    const { sender, message, timestamp, groupChatId } = messageData;
+function displayMessageInChat(messageData) { 
+    const { sender, message, timestamp, groupChatId, group_name } = messageData; // Додано group_name
     const messagesArea = document.getElementById('messagesArea');
     
     const messageElement = document.createElement('div');
@@ -399,11 +444,15 @@ function displayMessageInChat(messageData) { // Renamed
     }
     
     const senderDisplayName = groupChatId && !isOwnMessage ? sender.username : (isOwnMessage ? 'You' : sender.username);
+    // Використовуємо group_name для назви групи в повідомленні, якщо є
+    const messageSenderNameContent = groupChatId && !isOwnMessage 
+        ? `<div class="message-sender-name">${sender.username} ${group_name ? 'in ' + group_name : ''}</div>` 
+        : '';
 
     messageElement.innerHTML = `
         <div class="message-avatar">${(sender.username || 'S')[0].toUpperCase()}</div>
         <div class="message-content">
-            ${groupChatId && !isOwnMessage ? `<div class="message-sender-name">${sender.username}</div>` : ''}
+            ${messageSenderNameContent} 
             <div class="message-bubble">${message}</div>
             <div class="message-info">
                 <span>${new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -416,24 +465,50 @@ function displayMessageInChat(messageData) { // Renamed
     messagesArea.scrollTop = messagesArea.scrollHeight;
 }
 
-function updateChatPreviewInList(messageData) { // Renamed
-    const { sender, message, groupChatId, recipients, timestamp } = messageData;
+function updateChatPreviewInList(messageData) { 
+    console.log('[CHAT_SCRIPT] updateChatPreviewInList called with:', JSON.stringify(messageData, null, 2));
+    const { sender, message, recipients, timestamp } = messageData;
+    
     let targetId;
     let isGroupChat;
+    let chatNameForUpdate = messageData.group_name; // Використовуємо group_name, якщо воно є (від сервера або локально)
 
-    if (groupChatId) {
-        targetId = groupChatId;
+    const serverGroupId = messageData.group_chat_id; // snake_case - від сервера (подія 'new_message')
+    const localGroupId = messageData.groupChatId;    // camelCase - коли локально відправляємо повідомлення (з sendMessageToChat)
+
+    if (serverGroupId) {
+        targetId = serverGroupId;
+        isGroupChat = true;
+    } else if (localGroupId) {
+        targetId = localGroupId;
         isGroupChat = true;
     } else {
-        targetId = sender.id === currentUserId ? recipients[0] : sender.id;
+        // Логіка для 1-на-1 чатів
+        // targetId - це ID іншого учасника чату
+        if (sender.id === currentUserId && recipients && recipients.length > 0) {
+            targetId = recipients[0]; 
+        } else {
+            targetId = sender.id; 
+        }
         isGroupChat = false;
     }
     
-    const chatItem = document.querySelector(`.chat-item[data-chat="${targetId}"][data-is-group="${isGroupChat}"]`);
+    console.log(`[CHAT_SCRIPT] updateChatPreviewInList: Determined targetId=${targetId}, isGroupChat=${isGroupChat}, groupNameForUpdate=${chatNameForUpdate}`);
     
+    const chatItemSelector = `.chat-item[data-chat="${targetId}"][data-is-group="${isGroupChat.toString()}"]`;
+    const chatItem = document.querySelector(chatItemSelector);
+    console.log(`[CHAT_SCRIPT] updateChatPreviewInList: Attempting to find chat item with selector: ${chatItemSelector}`);
+
     if (chatItem) {
+        console.log(`[CHAT_SCRIPT] updateChatPreviewInList: Chat item FOUND for targetId=${targetId}, isGroupChat=${isGroupChat}`);
         const previewEl = chatItem.querySelector('.chat-preview');
         const timeEl = chatItem.querySelector('.chat-time');
+        const nameEl = chatItem.querySelector('.chat-name');
+
+        // Оновлюємо назву групи в списку, якщо вона є в messageData і відрізняється
+        if (isGroupChat && chatNameForUpdate && nameEl && nameEl.textContent !== chatNameForUpdate) {
+            nameEl.textContent = chatNameForUpdate;
+        }
 
         if (previewEl) {
             let previewText;
@@ -463,6 +538,7 @@ function updateChatPreviewInList(messageData) { // Renamed
 }
 
 function switchChat(chatOrGroupId, isGroup) {
+    console.log(`[CHAT_SCRIPT] switchChat called with: chatOrGroupId=${chatOrGroupId}, isGroup=${isGroup}, typeof chatOrGroupId=${typeof chatOrGroupId}`); // Додано лог
     const messagesArea = document.getElementById('messagesArea');
     const chatTitle = document.getElementById('chatTitle');
     const addMembersBtn = document.getElementById('addMembersToGroupBtn');
@@ -496,14 +572,16 @@ function switchChat(chatOrGroupId, isGroup) {
     }
 
     if (isGroup) {
-        currentGroupChat = parseInt(chatOrGroupIdStr); // Ensure it's a number for state
+        currentGroupChat = chatOrGroupIdStr;
         currentChat = null;
-        socket.emit('get_chat_history', { groupChatId: parseInt(chatOrGroupIdStr) });
+        console.log(`[CHAT_SCRIPT] Switched to GROUP chat. currentGroupChat set to: ${currentGroupChat}`); // Додано лог
+        socket.emit('get_chat_history', { groupChatId: chatOrGroupIdStr });
         if (addMembersBtn) addMembersBtn.style.display = 'inline-block';
         if (groupInfoBtn) groupInfoBtn.style.display = 'inline-block';
     } else {
-        currentChat = parseInt(chatOrGroupIdStr); // Ensure it's a number for state
+        currentChat = parseInt(chatOrGroupIdStr);
         currentGroupChat = null;
+        console.log(`[CHAT_SCRIPT] Switched to INDIVIDUAL chat. currentChat set to: ${currentChat}`); // Додано лог
         socket.emit('get_chat_history', { 
             userId1: currentUserId, 
             userId2: parseInt(chatOrGroupIdStr)
@@ -511,7 +589,7 @@ function switchChat(chatOrGroupId, isGroup) {
         if (addMembersBtn) addMembersBtn.style.display = 'none';
         if (groupInfoBtn) groupInfoBtn.style.display = 'none';
     }
-    clearChatNotificationForSource(parseInt(chatOrGroupIdStr), isGroup);
+    clearChatNotificationForSource(chatOrGroupIdStr, isGroup);
 
     const url = new URL(window.location);
     url.searchParams.delete('chat');

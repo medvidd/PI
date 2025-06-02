@@ -22,9 +22,12 @@ const messageSchema = new mongoose.Schema({
         default: false
     },
     group_chat_id: {
-        type: Number,
+        type: String,
         default: null
     }
 });
+
+messageSchema.index({ group_chat_id: 1, timestamp: -1 });
+messageSchema.index({ sender_id: 1, recipient_id: 1, timestamp: -1 });
 
 module.exports = mongoose.model('Message', messageSchema); 

@@ -11,6 +11,7 @@ const cors = require('cors');
 const mysql = require('mysql2/promise');
 const mongoose = require('mongoose');
 const Message = require('./models/Message');
+const GroupChat = require('./models/GroupChat');
 
 app.use(cors()); // Дозволити CORS для всіх HTTP запитів
 app.use(express.json());
@@ -29,10 +30,13 @@ mongoose.connect('mongodb://127.0.0.1:27017/stumanager_chat')
     .then(() => {
         console.log('MongoDB підключено успішно');
         // Створюємо індекси для оптимізації пошуку
-        return Message.createIndexes();
+        return Promise.all([
+            Message.createIndexes(),
+            GroupChat.createIndexes()
+        ]);
     })
     .then(() => {
-        console.log('MongoDB індекси створено');
+        console.log('MongoDB індекси створено для Message та GroupChat');
     })
     .catch((err) => {
         console.error('Помилка підключення до MongoDB:', err);
@@ -125,7 +129,7 @@ async function getActiveChats(userId) {
     const oneOnOneChatPartners = {}; // partnerId -> { lastMessage object }
     for (const msg of oneOnOneMessages) {
         const partnerId = msg.sender_id === userId ? msg.recipient_id : msg.sender_id;
-        if (partnerId === null || partnerId === userId) continue; 
+        if (partnerId === null || partnerId === userId) continue;
         if (!oneOnOneChatPartners[partnerId] || new Date(msg.timestamp) > new Date(oneOnOneChatPartners[partnerId].timestamp)) {
             oneOnOneChatPartners[partnerId] = {
                 text: msg.message,
@@ -161,27 +165,25 @@ async function getActiveChats(userId) {
         }
     }
 
-    // 2. Отримати групові чати, до яких належить користувач
-    const [groupMemberships] = await pool.query(
-        'SELECT gc.id, gc.name, gc.created_at FROM group_chats gc JOIN group_chat_members gcm ON gc.id = gcm.group_chat_id WHERE gcm.user_id = ?',
-        [userId]
-    );
+    // 2. Отримати групові чати, до яких належить користувач (з MongoDB)
+    const userGroupChats = await GroupChat.find({ members: userId }).lean();
 
-    for (const group of groupMemberships) {
-        const lastGroupMessage = await Message.findOne({ group_chat_id: group.id })
+    for (const group of userGroupChats) {
+        const lastGroupMessage = await Message.findOne({ group_chat_id: group._id.toString() }) // Використовуємо _id з MongoDB
             .sort({ timestamp: -1 })
             .lean();
 
         if (lastGroupMessage) {
             let senderName = 'System';
             if (lastGroupMessage.sender_id) {
+                // Імена користувачів все ще беремо з MySQL, як домовлялися
                 const [senderUser] = await pool.query('SELECT username FROM users WHERE id = ?', [lastGroupMessage.sender_id]);
                 if (senderUser.length > 0) {
                     senderName = senderUser[0].username;
                 }
             }
             activeChats.push({
-                id: group.id,
+                id: group._id.toString(), // ID групи з MongoDB
                 name: group.name,
                 isGroup: true,
                 lastMessage: {
@@ -193,14 +195,13 @@ async function getActiveChats(userId) {
                 avatarLetter: group.name?.[0]?.toUpperCase() || 'G'
             });
         } else {
-            // Показати групу, навіть якщо немає повідомлень
             activeChats.push({
-                id: group.id,
+                id: group._id.toString(), // ID групи з MongoDB
                 name: group.name,
                 isGroup: true,
                 lastMessage: {
                     text: 'New group. No messages yet.',
-                    timestamp: group.created_at || new Date(0), 
+                    timestamp: group.created_at || new Date(0),
                     senderName: 'System',
                     senderIsSelf: false
                 },
@@ -214,34 +215,25 @@ async function getActiveChats(userId) {
     return activeChats;
 }
 
-async function createGroupChat(name, memberIds) {
-    let connection;
+async function createGroupChat(name, memberIds, creatorId) {
     try {
-        connection = await pool.getConnection();
-        await connection.beginTransaction();
-
-        const [result] = await connection.query(
-            'INSERT INTO group_chats (name, created_at) VALUES (?, NOW())',
-            [name]
-        );
-        const chatId = result.insertId;
-
-        const memberInsertPromises = memberIds.map(memberId =>
-            connection.query(
-                'INSERT INTO group_chat_members (group_chat_id, user_id) VALUES (?, ?)',
-                [chatId, memberId]
-            )
-        );
-        await Promise.all(memberInsertPromises);
-
-        await connection.commit();
-        return { id: chatId, name: name, members: memberIds };
+        const newGroupChat = new GroupChat({
+            name: name,
+            creator_id: creatorId,
+            members: memberIds,
+            created_at: new Date()
+        });
+        const savedGroupChat = await newGroupChat.save();
+        console.log('Груповий чат створено в MongoDB:', savedGroupChat);
+        return { 
+            id: savedGroupChat._id.toString(), // Повертаємо ID з MongoDB
+            name: savedGroupChat.name, 
+            members: savedGroupChat.members,
+            creator_id: savedGroupChat.creator_id
+        };
     } catch (error) {
-        if (connection) await connection.rollback();
-        console.error('Error creating group chat:', error);
+        console.error('Error creating group chat in MongoDB:', error);
         return null;
-    } finally {
-        if (connection) connection.release();
     }
 }
 
@@ -250,23 +242,13 @@ async function saveMessage(senderId, recipientId, message, groupChatId = null) {
         // Зберігаємо в MongoDB
         const mongoMessage = new Message({
             sender_id: senderId,
-            recipient_id: recipientId, // Буде null для групових повідомлень
+            recipient_id: recipientId,
             message: message,
-            group_chat_id: groupChatId, // Буде null для 1-на-1
+            group_chat_id: groupChatId ? groupChatId.toString() : null,
             timestamp: new Date()
         });
         const savedMongoMessage = await mongoMessage.save();
-        // console.log('Повідомлення збережено в MongoDB:', savedMongoMessage);
         
-        // Зберігаємо в MySQL (можливо для аналітики або інших цілей)
-        // Поле mongo_message_id може бути додано до таблиці messages в MySQL для зв'язку
-        await pool.query(
-            'INSERT INTO messages (sender_id, recipient_id, group_chat_id, message, timestamp) VALUES (?, ?, ?, ?, ?)',
-            [senderId, recipientId, groupChatId, message, savedMongoMessage.timestamp]
-        );
-        // console.log('Повідомлення також збережено в MySQL');
-        
-        // Отримуємо імена для відповіді
         let senderName = 'Unknown User';
         const [senderUserRows] = await pool.query('SELECT username FROM users WHERE id = ?', [senderId]);
         if (senderUserRows.length > 0) {
@@ -275,25 +257,48 @@ async function saveMessage(senderId, recipientId, message, groupChatId = null) {
 
         let groupName = null;
         if (groupChatId) {
-            const [groupRows] = await pool.query('SELECT name FROM group_chats WHERE id = ?', [groupChatId]);
-            if (groupRows.length > 0) {
-                groupName = groupRows[0].name;
+            // Перевірка, чи groupChatId є валідним ObjectId перед пошуком
+            if (mongoose.Types.ObjectId.isValid(groupChatId.toString())) {
+                const group = await GroupChat.findById(groupChatId.toString()).lean();
+                if (group) {
+                    groupName = group.name;
+                } else {
+                    console.warn(`Group not found in MongoDB with ID: ${groupChatId.toString()} (saveMessage)`);
+                    // Якщо група не знайдена за валідним ObjectId, можливо, її видалили
+                    // Або це ID, який не є ObjectId і пройшов перевірку isValid (малоймовірно, але можливо для деяких рядків)
+                }
+            } else {
+                console.error(`Invalid ObjectId format for groupChatId: ${groupChatId} in saveMessage. Message not linked to group name.`);
+                // Тут groupChatId в повідомленні буде збережено, але groupName не буде отримано.
+                // Це запобігає CastError, але проблема з неправильним ID від клієнта залишається.
             }
         }
         
-        return {
-            _id: savedMongoMessage._id.toString(), // Використовуємо ID з MongoDB
-            id: savedMongoMessage._id.toString(), // Для зручності клієнта
-            sender_id: savedMongoMessage.sender_id,
+        const fullSavedMessage = {
+            _id: savedMongoMessage._id.toString(),
+            id: savedMongoMessage._id.toString(), // для сумісності, якщо десь використовується id замість _id
+            sender: {
+                id: savedMongoMessage.sender_id,
+                username: senderName 
+            },
             recipient_id: savedMongoMessage.recipient_id,
             group_chat_id: savedMongoMessage.group_chat_id,
             message: savedMongoMessage.message,
             timestamp: savedMongoMessage.timestamp,
-            sender_name: senderName,
-            group_name: groupName
+            group_name: groupName // Додаємо groupName до об'єкту, що повертається
         };
+
+        if (fullSavedMessage.group_chat_id) {
+            console.log('[SERVER] saveMessage is about to return for a GROUP message:', JSON.stringify(fullSavedMessage, null, 2));
+        } else {
+            console.log('[SERVER] saveMessage is about to return for a PRIVATE message:', JSON.stringify(fullSavedMessage, null, 2));
+        }
+        
+        return fullSavedMessage;
     } catch (error) {
-        console.error('Error saving message:', error);
+        // Якщо помилка виникла на етапі mongoMessage.save(), наприклад, через невалідний group_chat_id у схемі
+        // (якщо б тип був ObjectId а не String), то вона буде зловлена тут.
+        console.error('Error saving message to MongoDB (could be during .save() or other operation):', error);
         return null;
     }
 }
@@ -302,9 +307,9 @@ async function getMessageHistory(userId1, userId2, groupChatId = null) {
     try {
         let mongoQuery;
         if (groupChatId) {
-            mongoQuery = { group_chat_id: parseInt(groupChatId) };
+            // Переконуємося, що groupChatId є string
+            mongoQuery = { group_chat_id: groupChatId.toString() };
         } else {
-            // Для 1-на-1 чатів, переконуємось що group_chat_id відсутній
             mongoQuery = {
                 group_chat_id: null,
                 $or: [
@@ -315,11 +320,11 @@ async function getMessageHistory(userId1, userId2, groupChatId = null) {
         }
 
         const messages = await Message.find(mongoQuery)
-            .sort({ timestamp: -1 }) // Останні спочатку
-            .limit(50) // Обмеження до 50 повідомлень
+            .sort({ timestamp: -1 })
+            .limit(50)
             .lean();
 
-        messages.reverse(); // Повертаємо до хронологічного порядку для відображення
+        messages.reverse();
 
         if (messages.length === 0) return [];
 
@@ -327,6 +332,7 @@ async function getMessageHistory(userId1, userId2, groupChatId = null) {
         let userMap = {};
 
         if (userIds.length > 0) {
+            // Імена користувачів все ще беремо з MySQL
             const [users] = await pool.query(
                 'SELECT id, username FROM users WHERE id IN (?)',
                 [userIds]
@@ -338,7 +344,7 @@ async function getMessageHistory(userId1, userId2, groupChatId = null) {
         }
 
         return messages.map(msg => ({
-            id: msg._id.toString(), // ID з MongoDB
+            id: msg._id.toString(),
             sender_id: msg.sender_id,
             recipient_id: msg.recipient_id,
             message: msg.message,
@@ -347,7 +353,7 @@ async function getMessageHistory(userId1, userId2, groupChatId = null) {
             group_chat_id: msg.group_chat_id
         }));
     } catch (error) {
-        console.error('Error fetching message history:', error);
+        console.error('Error fetching message history from MongoDB:', error);
         return [];
     }
 }
@@ -452,32 +458,28 @@ io.on('connection', async (socket) => {
         const userData = activeUsers.get(socket.id);
         if (!userData || !userData.userId) {
             console.warn("Attempt to create group chat by unauthenticated user");
-            // Можна відправити помилку клієнту
             return;
         }
         const creatorId = userData.userId;
         const creatorUsername = userData.username;
 
-        // Переконуємося, що творець є у списку учасників та видаляємо дублікати
         const uniqueMemberIds = [...new Set([...members.map(id => parseInt(id)), creatorId])];
 
-        const groupChat = await createGroupChat(name, uniqueMemberIds);
+        // Передаємо creatorId у функцію
+        const groupChat = await createGroupChat(name, uniqueMemberIds, creatorId); 
         if (groupChat) {
             const systemMessageContent = `Group chat "${name}" created by ${creatorUsername}.`;
-            // Зберігаємо системне повідомлення в MongoDB.
-            // Відправником може бути ID творця або спеціальний системний ID.
-            await saveMessage(creatorId, null, systemMessageContent, groupChat.id);
+            // groupChat.id тепер є _id з MongoDB (string)
+            await saveMessage(creatorId, null, systemMessageContent, groupChat.id); 
 
-            // Сповіщаємо всіх учасників про необхідність оновити їх списки чатів
             await notifyUsersToUpdateChatList(uniqueMemberIds);
             
-            // Відправляємо творцю інформацію про успішне створення групи, щоб він міг на неї переключитися
             const creatorSocketInfo = activeUsers.get(socket.id);
             if (creatorSocketInfo && creatorSocketInfo.socket) {
                 creatorSocketInfo.socket.emit('group_chat_creation_success', {
-                    id: groupChat.id,
+                    id: groupChat.id, // Це вже _id з MongoDB (string)
                     name: groupChat.name,
-                    members: uniqueMemberIds,
+                    members: uniqueMemberIds, // Це масив ID
                     isGroup: true
                 });
             }
@@ -492,59 +494,80 @@ io.on('connection', async (socket) => {
 
     socket.on('send_message', async (messageData) => {
         const { message, sender, groupChatId, recipients } = messageData;
-        const senderId = parseInt(sender.id); // Переконуємось, що ID є числом
+        const senderId = parseInt(sender.id);
 
         if (isNaN(senderId)) {
             console.error("Message send attempt without valid sender ID", messageData);
             return;
         }
-        
-        let savedMessage;
-        let targetUserIdsToNotify = new Set();
-        targetUserIdsToNotify.add(senderId); // Відправник завжди отримує оновлення
 
+        let savedMessage;
         if (groupChatId) {
-            savedMessage = await saveMessage(senderId, null, message, parseInt(groupChatId));
-            if (savedMessage) {
-                const [groupMembers] = await pool.query('SELECT user_id FROM group_chat_members WHERE group_chat_id = ?', [parseInt(groupChatId)]);
-                groupMembers.forEach(member => targetUserIdsToNotify.add(member.user_id));
-            }
+            // Повідомлення для групи
+            // groupChatId тут має бути _id з MongoDB (string)
+            savedMessage = await saveMessage(senderId, null, message, groupChatId);
         } else if (recipients && recipients.length > 0) {
-            const recipientId = parseInt(recipients[0]); // Припускаємо одного отримувача для 1-на-1
-            if (isNaN(recipientId)) {
-                console.error("Invalid recipient ID", messageData);
+            // Приватне повідомлення одному або кільком (якщо реалізовано)
+            // Для простоти, припустимо, що recipients - це масив з одним ID отримувача
+            const recipientId = parseInt(recipients[0]); 
+            if (!isNaN(recipientId)) {
+                savedMessage = await saveMessage(senderId, recipientId, message, null);
+            } else {
+                console.error("Invalid recipient ID for private message", messageData);
                 return;
             }
-            savedMessage = await saveMessage(senderId, recipientId, message);
-            if (savedMessage) {
-                targetUserIdsToNotify.add(recipientId);
-            }
         } else {
-            console.error("Invalid message data: no groupChatId or recipients", messageData);
+            console.error("Message send attempt without recipient or groupChatId", messageData);
             return;
         }
 
         if (savedMessage) {
-            const messageForRealtimeDelivery = {
-                id: savedMessage._id, // Використовуємо ID з MongoDB
-                sender: { id: savedMessage.sender_id, username: savedMessage.sender_name },
-                recipient_id: savedMessage.recipient_id, // Додаємо ID отримувача для 1-на-1 чатів
-                message: savedMessage.message,
-                timestamp: savedMessage.timestamp,
-                groupChatId: savedMessage.group_chat_id, // Це може бути null
-                groupName: savedMessage.group_name // Це може бути null
-            };
-
-            // Надсилаємо 'new_message' всім активним сокетам залучених користувачів
-            targetUserIdsToNotify.forEach(userId => {
-                const userSocketSet = userSockets.get(userId);
-                if (userSocketSet) {
-                    userSocketSet.forEach(socketId => io.to(socketId).emit('new_message', messageForRealtimeDelivery));
+            // console.log('Повідомлення успішно збережено і готове до відправки:', savedMessage);
+            if (savedMessage.group_chat_id) {
+                const group = await GroupChat.findById(savedMessage.group_chat_id).lean();
+                if (group && group.members) {
+                    group.members.forEach(memberId => {
+                        const memberSockets = userSockets.get(memberId);
+                        if (memberSockets) {
+                            memberSockets.forEach(socketId => {
+                                // Надсилаємо повідомлення, ЯКЩО це не той самий сокет, з якого надіслано (для відправника)
+                                // АБО якщо це інший учасник групи (memberId !== senderId)
+                                if (socketId !== socket.id || memberId !== senderId) {
+                                    io.to(socketId).emit('new_message', savedMessage);
+                                }
+                            });
+                        }
+                    });
                 }
-            });
-            
-            // Сповіщаємо користувачів про необхідність оновити їх списки чатів (це оновить останнє повідомлення)
-            await notifyUsersToUpdateChatList(Array.from(targetUserIdsToNotify));
+            } else if (savedMessage.recipient_id) {
+                // Надсилаємо отримувачу
+                const recipientSockets = userSockets.get(savedMessage.recipient_id);
+                if (recipientSockets) {
+                    recipientSockets.forEach(socketId => {
+                        io.to(socketId).emit('new_message', savedMessage);
+                    });
+                }
+                // Оновлення для відправника на інших його пристроях/вкладках, але не на поточній
+                // Ця логіка для 1-на-1 чатів, аналогічно груповим, має не надсилати на той самий сокет.
+                const senderUserSocketSet = userSockets.get(senderId); 
+                if (senderUserSocketSet) {
+                    senderUserSocketSet.forEach(socketId => {
+                        if (socketId !== socket.id) { 
+                             io.to(socketId).emit('new_message', savedMessage);
+                        }
+                    });
+                }
+            }
+        } else {
+            console.error('Не вдалося зберегти повідомлення:', messageData);
+            // Можна надіслати помилку відправнику
+            const senderSocketInfo = activeUsers.get(socket.id);
+            if(senderSocketInfo && senderSocketInfo.socket) {
+                senderSocketInfo.socket.emit('message_send_error', { 
+                    error: 'Failed to save message on server.',
+                    originalMessage: messageData 
+                });
+            }
         }
     });
 
