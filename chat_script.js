@@ -10,6 +10,7 @@ let currentUsername = null;
 let currentChat = null; 
 let currentGroupChat = null; 
 let userStatuses = {}; // Local cache of user statuses
+let activeChatList = []; // Local cache for the list of active chats
 
 // Функція для оновлення UI хедера (скопійовано з script.js для автономності, якщо script.js не завантажено або зміниться)
 function updateChatHeaderUIForLoggedInUser(username) {
@@ -63,11 +64,17 @@ function showChatNotification(messageData) {
     const bellIcon = notificationContainer.querySelector('.bell'); // Renamed to avoid conflict with bell variable
 
     // Check if this notification is for the currently active chat
+    const chatWindowVisible = document.getElementById('messagesArea') && document.getElementById('messagesArea').offsetParent !== null;
     let isChatActiveWithMessageSource = false;
-    if (groupChatId) {
-        isChatActiveWithMessageSource = currentGroupChat === groupChatId;
-    } else {
-        isChatActiveWithMessageSource = currentChat === sender.id && !currentGroupChat;
+    if (chatWindowVisible) { // Only suppress if the chat window itself is visible
+        if (groupChatId) {
+            isChatActiveWithMessageSource = currentGroupChat === groupChatId;
+        } else {
+            // For 1-on-1 chats:
+            // Message from the other user in the active chat OR our own message to the active chat user
+            isChatActiveWithMessageSource = (currentChat === sender.id && sender.id !== currentUserId) || 
+                                          (currentChat === recipient_id && sender.id === currentUserId);
+        }
     }
 
     if (isChatActiveWithMessageSource) {
@@ -172,7 +179,8 @@ async function initializeChat() {
                 // Inform server of activity on the chat page
                 socket.emit('user_activity', { userId: currentUserId, page: window.location.pathname });
                 
-                await loadUsersAndGroups(); 
+                socket.emit('get_active_chats'); // Запитуємо список активних чатів
+                
                 setupEventListeners();
                 setupModalEventListeners();
                 updateChatNotificationDotState(); // Initial check for notifications
@@ -231,91 +239,73 @@ function updateUserStatusesUI() {
             
             // console.log(`Chat User ${userId}: currentStatus = ${currentStatusString}, Element:`, statusElement);
             
-            statusElement.classList.remove('status-online', 'status-offline'); // Clear old classes
+            statusElement.className = 'chat-status'; // Reset classes
             statusElement.classList.add(`status-${currentStatusString}`); // Add current class e.g. status-online
             statusElement.textContent = currentStatusString.charAt(0).toUpperCase() + currentStatusString.slice(1);
         }
     });
 }
 
-async function loadUsersAndGroups() {
-    await loadUsersForChat(); // Renamed to avoid conflict if script.js had a loadUsers
-    await loadGroupChatsForChat(); 
-}
+function renderChatList(chats) {
+    const chatItemsContainer = document.getElementById('chatItems');
+    chatItemsContainer.innerHTML = ''; // Очищаємо поточний список
+    activeChatList = chats; // Зберігаємо отриманий список локально
 
-async function loadUsersForChat() { 
-    try {
-        const response = await fetch('/PI/api/get_users.php'); // This PHP should return user.status correctly
-        const result = await response.json();
-        const chatItemsContainer = document.getElementById('chatItems');
+    if (!chats || chats.length === 0) {
+        chatItemsContainer.innerHTML = '<p class="no-chats-message">No active chats yet. Start a new one!</p>';
+        return;
+    }
+
+    chats.forEach(chat => {
+        const chatItem = document.createElement('div');
+        chatItem.className = 'chat-item';
+        chatItem.dataset.chat = chat.id; 
+        chatItem.dataset.isGroup = chat.isGroup.toString();
+        if ((chat.isGroup && currentGroupChat === chat.id) || (!chat.isGroup && currentChat === chat.id)) {
+            chatItem.classList.add('active');
+        }
+
+        const avatarLetter = chat.avatarLetter || (chat.name ? chat.name[0].toUpperCase() : '?');
+        const avatarIcon = chat.isGroup ? '<i class="fas fa-users"></i>' : avatarLetter;
+
+        let previewText = 'No messages yet.';
+        let previewTimestamp = '';
+
+        if (chat.lastMessage) {
+            if (chat.isGroup) {
+                previewText = `${chat.lastMessage.senderIsSelf ? 'You' : (chat.lastMessage.senderName || 'User')}: ${chat.lastMessage.text}`;
+            } else {
+                // For 1-on-1 chats, show sender if not self
+                previewText = `${chat.lastMessage.senderIsSelf ? 'You' : chat.name}: ${chat.lastMessage.text}`;
+            }
+            previewTimestamp = chat.lastMessage.timestamp ? new Date(chat.lastMessage.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        }
         
-        if (result.success) {
-            // Clear only individual chat items before adding/updating
-            chatItemsContainer.querySelectorAll('.chat-item[data-is-group="false"]').forEach(el => el.remove());
+        previewText = previewText.length > 35 ? previewText.substring(0, 32) + "..." : previewText;
 
-            result.users.forEach(user => {
-                if (user.id !== currentUserId) {
-                    const chatItem = document.createElement('div');
-                    chatItem.className = 'chat-item';
-                    chatItem.dataset.chat = user.id;
-                    chatItem.dataset.isGroup = "false"; 
-                    
-                    // Initial status from get_users.php; will be updated by socket 'user_statuses' event
-                    const initialStatus = user.status || 'offline'; 
+        chatItem.innerHTML = `
+            <div class="chat-avatar">${avatarIcon}</div>
+            <div class="chat-info">
+                <div class="chat-name-time">
+                    <div class="chat-name">${chat.name}</div>
+                    ${previewTimestamp ? `<div class="chat-time">${previewTimestamp}</div>` : ''}
+                </div>
+                <p class="chat-preview">${previewText}</p>
+                ${!chat.isGroup ? '<div class="chat-status status-offline">Offline</div>' : ''} 
+            </div>
+        `;
+        // Статус для індивідуальних чатів буде оновлено updateUserStatusesUI
 
-                    chatItem.innerHTML = `
-                        <div class="chat-avatar">${user.username[0].toUpperCase()}</div>
-                        <div class="chat-info">
-                            <div class="chat-name">${user.username}</div>
-                            <p class="chat-preview">Click to start chatting</p>
-                            <div class="chat-status status-${initialStatus}">
-                                ${initialStatus.charAt(0).toUpperCase() + initialStatus.slice(1)}
-                            </div>
-                        </div>
-                    `;
-                    chatItem.addEventListener('click', () => switchChat(user.id, false));
-                    chatItemsContainer.appendChild(chatItem);
-                }
-            });
-            updateUserStatusesUI(); // Apply latest statuses after rendering
-        }
-    } catch (error) {
-        console.error('Error loading users for chat:', error);
-    }
+        chatItem.addEventListener('click', () => switchChat(chat.id, chat.isGroup));
+        chatItemsContainer.appendChild(chatItem);
+    });
+    updateUserStatusesUI(); // Оновлюємо статуси після рендерингу списку чатів
 }
 
-async function loadGroupChatsForChat() {
-    try {
-        const response = await fetch('/PI/api/get_group_chats.php');
-        const result = await response.json();
-        const chatItemsContainer = document.getElementById('chatItems');
-
-        if (result.success) {
-             // Clear only group chat items before adding/updating
-            chatItemsContainer.querySelectorAll('.chat-item[data-is-group="true"]').forEach(el => el.remove());
-
-            result.groupChats.forEach(group => {
-                const chatItem = document.createElement('div');
-                chatItem.className = 'chat-item group-chat-item'; 
-                chatItem.dataset.chat = group.id; 
-                chatItem.dataset.isGroup = "true"; 
-
-                chatItem.innerHTML = `
-                    <div class="chat-avatar"><i class="fas fa-users"></i></div>
-                    <div class="chat-info">
-                        <div class="chat-name">${group.name}</div>
-                        <p class="chat-preview">Group chat</p>
-                        <!-- No status for group chats in this example -->
-                    </div>
-                `;
-                chatItem.addEventListener('click', () => switchChat(group.id, true));
-                chatItemsContainer.appendChild(chatItem);
-            });
-        }
-    } catch (error) {
-        console.error('Error loading group chats:', error);
-    }
-}
+socket.on('active_chats_list', (chats) => {
+    console.log('Received active_chats_list:', chats);
+    renderChatList(chats);
+});
 
 function sendMessageToChat(recipientsIgnored, message) { // Renamed
     if (!currentUsername || (!currentChat && !currentGroupChat)) {
@@ -349,17 +339,29 @@ function sendMessageToChat(recipientsIgnored, message) { // Renamed
 }
 
 socket.on('new_message', (messageData) => {
+    console.log('[CHAT_SCRIPT] Received new_message:', JSON.parse(JSON.stringify(messageData)));
+    console.log('[CHAT_SCRIPT] Current state: currentUserId:', currentUserId, 'currentChat:', currentChat, 'currentGroupChat:', currentGroupChat);
+
+    const recipient_id_from_data = messageData.recipient_id; // Зберігаємо перед можливою зміною messageData
+
     const isActiveChat = (messageData.groupChatId && messageData.groupChatId === currentGroupChat) ||
-                         (!messageData.groupChatId && messageData.sender.id === currentChat) || // Message from the other user in 1-1 chat
-                         (!messageData.groupChatId && messageData.recipients && messageData.recipients.includes(currentChat) && messageData.sender.id === currentUserId); // Our own message in 1-1 chat
+                         (!messageData.groupChatId && messageData.sender.id === currentChat && messageData.sender.id !== currentUserId) || 
+                         (!messageData.groupChatId && recipient_id_from_data === currentChat && messageData.sender.id === currentUserId);
                         
+    console.log('[CHAT_SCRIPT] isActiveChat evaluation:', isActiveChat);
+
     if (isActiveChat) {
-        displayMessageInChat(messageData); // Renamed
+        console.log('[CHAT_SCRIPT] Message is for the active chat. Calling displayMessageInChat.');
+        displayMessageInChat(messageData);
+    } else {
+        console.log('[CHAT_SCRIPT] Message is NOT for the active chat.');
     }
-    updateChatPreviewInList(messageData); // Renamed
     
     if (messageData.sender.id !== currentUserId) { 
+        console.log('[CHAT_SCRIPT] Message is from another user. Calling showChatNotification.');
         showChatNotification(messageData);
+    } else {
+        console.log('[CHAT_SCRIPT] Message is from current user. Not showing notification via showChatNotification.');
     }
 });
 
@@ -415,29 +417,48 @@ function displayMessageInChat(messageData) { // Renamed
 }
 
 function updateChatPreviewInList(messageData) { // Renamed
-    const { sender, message, groupChatId, recipients } = messageData;
-    let chatItem;
+    const { sender, message, groupChatId, recipients, timestamp } = messageData;
     let targetId;
+    let isGroupChat;
 
     if (groupChatId) {
         targetId = groupChatId;
-        chatItem = document.querySelector(`.chat-item[data-chat="${groupChatId}"][data-is-group="true"]`);
+        isGroupChat = true;
     } else {
         targetId = sender.id === currentUserId ? recipients[0] : sender.id;
-        chatItem = document.querySelector(`.chat-item[data-chat="${targetId}"][data-is-group="false"]`);
+        isGroupChat = false;
     }
     
+    const chatItem = document.querySelector(`.chat-item[data-chat="${targetId}"][data-is-group="${isGroupChat}"]`);
+    
     if (chatItem) {
-        const preview = chatItem.querySelector('.chat-preview');
-        if (preview) {
-            const previewText = groupChatId && sender.id !== currentUserId ? `${sender.username}: ${message}` : message;
-            preview.textContent = previewText.length > 30 ? previewText.substring(0, 27) + "..." : previewText;
+        const previewEl = chatItem.querySelector('.chat-preview');
+        const timeEl = chatItem.querySelector('.chat-time');
+
+        if (previewEl) {
+            let previewText;
+            if (isGroupChat) {
+                previewText = `${sender.id === currentUserId ? 'You' : sender.username}: ${message}`;
+            } else {
+                previewText = `${sender.id === currentUserId ? 'You: ' : ''}${message}`;
+            }
+            previewEl.textContent = previewText.length > 30 ? previewText.substring(0, 27) + "..." : previewText;
         }
+        if (timeEl && timestamp) {
+            timeEl.textContent = new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
         // Move chat item to top
         const chatItemsContainer = document.getElementById('chatItems');
         if (chatItemsContainer && chatItemsContainer.firstChild !== chatItem) {
             chatItemsContainer.prepend(chatItem);
         }
+    } else {
+        // Якщо чату немає в списку (наприклад, нове повідомлення від нового користувача),
+        // запитуємо оновлений список чатів у сервера.
+        // Це більш надійний спосіб, ніж намагатися додати елемент локально.
+        // console.log('Chat item not found for preview update, requesting full list refresh.');
+        socket.emit('get_active_chats');
     }
 }
 
@@ -449,42 +470,56 @@ function switchChat(chatOrGroupId, isGroup) {
 
     messagesArea.innerHTML = '<p style="text-align:center; color:#aaa; margin-top:20px;">Loading messages...</p>'; 
 
+    // Deactivate all other chat items
     document.querySelectorAll('.chat-item').forEach(item => item.classList.remove('active'));
-    const activeItem = document.querySelector(`.chat-item[data-chat="${chatOrGroupId}"][data-is-group="${isGroup}"]`);
     
-    if (activeItem) {
-        activeItem.classList.add('active');
-        chatTitle.textContent = activeItem.querySelector('.chat-name').textContent;
+    // Try to find the item in the DOM (could be real or temporary)
+    // Ensure dataset.chat is compared as a string if chatOrGroupId is a number, or parse chatOrGroupId
+    const chatOrGroupIdStr = chatOrGroupId.toString();
+    const activeItemInDom = document.querySelector(`.chat-item[data-chat="${chatOrGroupIdStr}"][data-is-group="${isGroup.toString()}"]`);
+    
+    if (activeItemInDom) {
+        activeItemInDom.classList.add('active');
+        chatTitle.textContent = activeItemInDom.querySelector('.chat-name').textContent;
     } else {
-        chatTitle.textContent = "Select a chat";
+        // This case might happen if switching via URL to a chat not yet in the list
+        // or if the temporary item creation logic in createNewChatFromModal had an issue.
+        const chatInfoFromCache = activeChatList.find(c => c.id.toString() === chatOrGroupIdStr && c.isGroup === isGroup);
+        if (chatInfoFromCache) {
+            chatTitle.textContent = chatInfoFromCache.name;
+        } else {
+            // Fallback: If truly no info, set generic title and request chat list.
+            chatTitle.textContent = isGroup ? "Group Chat" : "Chat"; 
+            console.warn(`Switched to chat ID ${chatOrGroupIdStr} (isGroup: ${isGroup}) but no DOM item or cache entry. Requesting chat list.`);
+            socket.emit('get_active_chats'); // Ensure list is up-to-date
+        }
     }
 
     if (isGroup) {
-        currentGroupChat = chatOrGroupId;
+        currentGroupChat = parseInt(chatOrGroupIdStr); // Ensure it's a number for state
         currentChat = null;
-        socket.emit('get_chat_history', { groupChatId: chatOrGroupId });
+        socket.emit('get_chat_history', { groupChatId: parseInt(chatOrGroupIdStr) });
         if (addMembersBtn) addMembersBtn.style.display = 'inline-block';
         if (groupInfoBtn) groupInfoBtn.style.display = 'inline-block';
     } else {
-        currentChat = chatOrGroupId;
+        currentChat = parseInt(chatOrGroupIdStr); // Ensure it's a number for state
         currentGroupChat = null;
         socket.emit('get_chat_history', { 
-            userId1: currentUserId,
-            userId2: chatOrGroupId
+            userId1: currentUserId, 
+            userId2: parseInt(chatOrGroupIdStr)
         });
         if (addMembersBtn) addMembersBtn.style.display = 'none';
         if (groupInfoBtn) groupInfoBtn.style.display = 'none';
     }
-    clearChatNotificationForSource(chatOrGroupId, isGroup); // Clear bmodal notification for this chat
+    clearChatNotificationForSource(parseInt(chatOrGroupIdStr), isGroup);
 
-    // Update URL
     const url = new URL(window.location);
     url.searchParams.delete('chat');
     url.searchParams.delete('group_chat');
     if (isGroup) {
-        url.searchParams.set('group_chat', chatOrGroupId);
+        url.searchParams.set('group_chat', chatOrGroupIdStr);
     } else {
-        url.searchParams.set('chat', chatOrGroupId);
+        url.searchParams.set('chat', chatOrGroupIdStr);
     }
     window.history.pushState({}, '', url);
 }
@@ -528,8 +563,15 @@ function setupModalEventListeners() {
                     const studentList = document.getElementById('studentList');
                     studentList.innerHTML = ''; // Clear previous list
                     
-                    result.users.forEach(user => {
-                        // No need to check user.id !== currentUserId if API handles it
+                    const usersToDisplay = result.users.filter(user => user.id !== currentUserId); // Заборона чату з самим собою
+
+                    usersToDisplay.forEach(user => {
+                        // Не додаємо користувача до списку, якщо з ним вже є активний чат (крім групових)
+                        // const existingIndividualChat = activeChatList.find(chat => !chat.isGroup && chat.id === user.id);
+                        // if (existingIndividualChat && document.querySelector('.chat-type-option.selected').dataset.type === 'individual') {
+                        // return; 
+                        // } - Цю логіку краще обробляти при створенні чату, а не при завантаженні списку користувачів
+
                         const studentItem = document.createElement('div');
                         studentItem.className = 'student-item';
                         studentItem.dataset.id = user.id;
@@ -691,35 +733,71 @@ function createNewChatFromModal() { // Renamed
     if (selectedType.dataset.type === 'individual') {
         if (selectedUsersData.length === 1) {
             const userToChatWith = selectedUsersData[0];
-            const existingChatItem = document.querySelector(`.chat-item[data-chat="${userToChatWith.id}"][data-is-group="false"]`);
+            // Перевіряємо, чи вже існує такий індивідуальний чат у списку активних чатів
+            const existingChat = activeChatList.find(chat => chat.id === userToChatWith.id && !chat.isGroup);
             
-            if (!existingChatItem) { // If chat doesn't exist in the list, add it (server handles actual creation implicitly)
-                loadUsersForChat().then(() => { // Reload users which might add the new one if not present
-                     const newlyAddedItem = document.querySelector(`.chat-item[data-chat="${userToChatWith.id}"][data-is-group="false"]`);
-                     if (newlyAddedItem) {
-                         switchChat(userToChatWith.id, false);
-                     } else { // If still not found (e.g. user not in get_users list), create a temporary item
-                          const chatItemsContainer = document.getElementById('chatItems');
-                          const tempChatItem = document.createElement('div');
-                          tempChatItem.className = 'chat-item';
-                          tempChatItem.dataset.chat = userToChatWith.id;
-                          tempChatItem.dataset.isGroup = "false";
-                          tempChatItem.innerHTML = `
-                             <div class="chat-avatar">${userToChatWith.username[0].toUpperCase()}</div>
-                             <div class="chat-info">
-                                 <div class="chat-name">${userToChatWith.username}</div>
-                                 <p class="chat-preview">New chat</p>
-                                 <div class="chat-status status-offline">Offline</div>
-                             </div>
-                          `;
-                          tempChatItem.addEventListener('click', () => switchChat(userToChatWith.id, false));
-                          chatItemsContainer.prepend(tempChatItem);
-                          updateUserStatusesUI(); // Try to get status
-                          switchChat(userToChatWith.id, false);
-                     }
-                });
+            if (existingChat) {
+                switchChat(userToChatWith.id, false); // Просто переключаємось на існуючий чат
             } else {
-                 switchChat(userToChatWith.id, false);
+                // Якщо чату немає, створюємо "тимчасовий" вигляд
+                console.log(`Creating a new local visual for chat with ${userToChatWith.username} (ID: ${userToChatWith.id})`);
+
+                // 1. Update chat window content
+                const messagesArea = document.getElementById('messagesArea');
+                messagesArea.innerHTML = `<p style="text-align:center; color:#aaa; margin-top:20px;">Starting new chat with ${userToChatWith.username}. Type a message to begin.</p>`;
+                
+                const chatTitle = document.getElementById('chatTitle');
+                chatTitle.textContent = userToChatWith.username;
+
+                // Hide group-specific buttons
+                const addMembersBtn = document.getElementById('addMembersToGroupBtn');
+                const groupInfoBtn = document.getElementById('groupInfoBtn');
+                if (addMembersBtn) addMembersBtn.style.display = 'none';
+                if (groupInfoBtn) groupInfoBtn.style.display = 'none';
+
+                // 2. Update global state
+                currentChat = userToChatWith.id;
+                currentGroupChat = null;
+
+                // 3. Update URL
+                const url = new URL(window.location);
+                url.searchParams.delete('chat');
+                url.searchParams.delete('group_chat');
+                url.searchParams.set('chat', currentChat);
+                window.history.pushState({}, '', url);
+
+                // 4. Manage chat list visuals
+                document.querySelectorAll('.chat-item').forEach(item => item.classList.remove('active'));
+
+                const chatItemsContainer = document.getElementById('chatItems');
+                // Remove old temp chat item if it exists for the same user to avoid duplicates before prepend
+                const existingTempItem = chatItemsContainer.querySelector(`.chat-item[data-chat="${userToChatWith.id}"][data-is-group="false"]`);
+                if (existingTempItem) {
+                    existingTempItem.remove();
+                }
+
+                const tempChatItem = document.createElement('div');
+                tempChatItem.className = 'chat-item active'; // Make it active
+                tempChatItem.dataset.chat = userToChatWith.id.toString();
+                tempChatItem.dataset.isGroup = "false";
+                const avatarLetter = userToChatWith.username ? userToChatWith.username[0].toUpperCase() : '?';
+
+                tempChatItem.innerHTML = `
+                    <div class="chat-avatar">${avatarLetter}</div>
+                    <div class="chat-info">
+                        <div class="chat-name-time">
+                            <div class="chat-name">${userToChatWith.username}</div>
+                            <div class="chat-time"></div> <!-- No time initially -->
+                        </div>
+                        <p class="chat-preview">New chat, send a message...</p>
+                        <div class="chat-status status-offline">Offline</div> <!-- Placeholder status -->
+                    </div>
+                `;
+                tempChatItem.addEventListener('click', () => switchChat(userToChatWith.id, false));
+                chatItemsContainer.prepend(tempChatItem);
+                
+                updateUserStatusesUI(); // Attempt to update its status if info is available
+                clearChatNotificationForSource(userToChatWith.id, false);
             }
         }
     } else { // Group chat
@@ -739,30 +817,28 @@ function createNewChatFromModal() { // Renamed
     closeModalAndReset('newChatModal');
 }
 
-socket.on('group_chat_created', (groupData) => {
-    const chatItemsContainer = document.getElementById('chatItems');
-    const existingItem = chatItemsContainer.querySelector(`.chat-item[data-chat="${groupData.id}"][data-is-group="true"]`);
-    if(existingItem) { // If chat already exists (e.g. from another client), update it or just switch
-        switchChat(groupData.id, true);
-        return; 
+socket.on('group_chat_created', (groupData) => { // Цей обробник може бути застарілим, якщо сервер надсилає group_chat_creation_success
+    // console.log('Received group_chat_created, but this might be deprecated. GroupData:', groupData);
+    // Список чатів тепер оновлюється через 'active_chats_list' або 'group_chat_creation_success'
+    // socket.emit('get_active_chats'); // Запитуємо оновлений список
+    // if(groupData && groupData.id) {
+    // switchChat(groupData.id, true);
+    // if(groupData.message) displayMessageInChat(groupData.message);
+    // }
+});
+
+socket.on('group_chat_creation_success', (newGroup) => {
+    console.log("Group chat creation successful on client:", newGroup);
+    // Сервер вже надішле оновлений список чатів через notifyUsersToUpdateChatList,
+    // але ми можемо одразу переключитися на новостворену групу.
+    if (newGroup && newGroup.id) {
+        // Можливо, варто дочекатися оновлення списку з active_chats_list, щоб уникнути мерехтіння
+        // Або, якщо сервер гарантує, що newGroup містить всю потрібну інфу для відображення:
+        switchChat(newGroup.id, true);
+        // Можна додати новий елемент до activeChatList локально, а потім він оновить його з сервера.
+        // Це може покращити UX, але потребує обережності, щоб не було розсинхронізації.
     }
-
-    const chatItem = document.createElement('div');
-    chatItem.className = 'chat-item group-chat-item';
-    chatItem.dataset.chat = groupData.id;
-    chatItem.dataset.isGroup = "true";
-    chatItem.innerHTML = `
-        <div class="chat-avatar"><i class="fas fa-users"></i></div>
-        <div class="chat-info">
-            <div class="chat-name">${groupData.name}</div>
-            <p class="chat-preview">${groupData.message && groupData.message.message ? groupData.message.message : 'Group chat created'}</p>
-        </div>
-    `;
-    chatItem.addEventListener('click', () => switchChat(groupData.id, true));
-    chatItemsContainer.prepend(chatItem); // Add to top
-
-    switchChat(groupData.id, true); // Switch to the new group chat
-    if(groupData.message) displayMessageInChat(groupData.message); 
+    // Запит на оновлення списку чатів вже був ініційований сервером, тому тут не потрібен.
 });
 
 function closeModalAndReset(modalId) { // Renamed

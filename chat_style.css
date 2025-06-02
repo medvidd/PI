@@ -47,7 +47,7 @@
             border-bottom: 1px solid #eee;
             cursor: pointer;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: 12px;
             transition: background-color 0.2s;
             position: relative;
@@ -75,7 +75,15 @@
         }
 
         .chat-info {
-            flex: 1;
+            flex-grow: 1;
+            overflow: hidden;
+        }
+
+        .chat-name-time {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
         }
 
         .chat-name {
@@ -83,18 +91,36 @@
             color: rgb(44, 100, 133);
             margin-bottom: 3px;
             font-size: 14px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex-grow: 1;
+            margin-right: 8px;
+        }
+
+        .chat-time {
+            font-size: 0.75em;
+            color: #777;
+            white-space: nowrap;
+            margin-left: auto;
         }
 
         .chat-preview {
-            color: #666;
-            font-size: 12px;
+            color: #555;
+            font-size: 0.85em;
             margin: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 4px;
         }
 
         .chat-status {
-            font-size: 10px;
+            font-size: 0.75em;
             color: rgb(44, 100, 133);
             font-weight: 500;
+            padding: 2px 6px;
+            border-radius: 8px;
         }
 
         .status-online {
@@ -579,4 +605,12 @@
         .chat-type-option span {
             font-weight: 600;
             font-size: 14px;
+        }
+
+        /* Styling for no chats message */
+        .no-chats-message {
+            text-align: center;
+            color: #888;
+            padding: 20px;
+            font-style: italic;
         }
