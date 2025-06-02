@@ -699,11 +699,11 @@ function setupModalEventListeners() {
                     document.getElementById('newChatModal').style.display = 'flex';
                 } else {
                     console.error("Failed to load users for new chat:", result.message);
-                    alert("Could not load users. Please try again.");
+                    // alert("Could not load users. Please try again.");
                 }
             } catch (error) {
                 console.error('Error loading users for new chat:', error);
-                alert("An error occurred while loading users.");
+                // alert("An error occurred while loading users.");
             }
         });
     }
@@ -769,7 +769,7 @@ function setupModalEventListeners() {
                 socket.emit('get_group_chat_details', { groupId: currentGroupChat });
                 // Модальне вікно відкриється після отримання group_chat_details_response
             } else {
-                alert('Please select a group chat first.');
+                // alert('Please select a group chat first.');
             }
         });
     }
@@ -795,7 +795,7 @@ function setupModalEventListeners() {
             const newName = editChatNameInput.value.trim();
             if (currentGroupChat && newName && currentGroupDetails && newName !== currentGroupDetails.name) {
                 if (currentGroupDetails.creator_id !== currentUserId) {
-                    alert('Only the group creator can change the name.');
+                    // alert('Only the group creator can change the name.');
                     return;
                 }
                 if (newName.length > 0 && newName.length <= 100) {
@@ -834,7 +834,7 @@ function setupModalEventListeners() {
             if (currentGroupChat && memberIdsToAdd.length > 0) {
                 socket.emit('add_members_to_group', { groupId: currentGroupChat, memberIdsToAdd: memberIdsToAdd });
             } else if (memberIdsToAdd.length === 0) {
-                alert('Please select users to add.');
+                // alert('Please select users to add.');
             }
         });
     }
@@ -922,7 +922,7 @@ function createNewChatFromModal() { // Renamed
         }));
     
     if (selectedUsersData.length === 0) {
-        alert("Please select at least one user.");
+        // alert("Please select at least one user.");
         return;
     }
 
@@ -1006,7 +1006,7 @@ function createNewChatFromModal() { // Renamed
                 members: [...memberIds, currentUserId] // Ensure current user is part of the member list sent
             });
         } else if (!chatName) {
-            alert("Please enter a name for the group chat.");
+            // alert("Please enter a name for the group chat.");
             return;
         }
     }
@@ -1068,7 +1068,7 @@ function closeModalAndReset(modalId) { // Renamed
 socket.on('group_chat_details_response', (data) => {
     console.log('[CHAT_SCRIPT] Received group_chat_details_response:', data);
     if (data.error) {
-        alert(`Error fetching group details: ${data.error}`);
+        // alert(`Error fetching group details: ${data.error}`);
         currentGroupDetails = null; // Скидаємо, якщо помилка
     } else {
         currentGroupDetails = data; // Зберігаємо деталі групи
@@ -1086,9 +1086,9 @@ socket.on('group_chat_details_response', (data) => {
 socket.on('group_chat_update_response', (data) => {
     console.log('[CHAT_SCRIPT] Received group_chat_update_response:', data);
     if (data.error) {
-        alert(`Error updating group: ${data.error}`);
+        // alert(`Error updating group: ${data.error}`);
     } else if (data.success) {
-        alert(`Group updated successfully! New name: ${data.newName}`);
+        // alert(`Group updated successfully! New name: ${data.newName}`);
         if (data.groupDetails && currentGroupChat === data.groupDetails.id) {
             currentGroupDetails = data.groupDetails;
             updateGroupActionButtonsVisibility(); // Оновлюємо кнопки, якщо змінився творець (малоймовірно, але для консистентності)
@@ -1107,9 +1107,9 @@ socket.on('group_chat_update_response', (data) => {
 socket.on('group_members_update_response', (data) => {
     console.log('[CHAT_SCRIPT] Received group_members_update_response:', data);
     if (data.error) {
-        alert(`Error updating group members: ${data.error}`);
+        // alert(`Error updating group members: ${data.error}`);
     } else if (data.success) {
-        alert(data.message || 'Group members updated successfully!');
+        // alert(data.message || 'Group members updated successfully!');
         if (data.groupDetails && currentGroupChat === data.groupDetails.id) {
             currentGroupDetails = data.groupDetails;
             updateGroupActionButtonsVisibility();
@@ -1159,7 +1159,7 @@ socket.on('group_chat_removed_or_left', ({ groupId }) => {
     }
     // Запит на оновлення списку активних чатів, щоб група зникла
     socket.emit('get_active_chats');
-    alert('You have been removed from a group or have left a group.');
+    // alert('You have been removed from a group or have left a group.');
 });
 
 // Функція для заповнення модального вікна інформації про групу
@@ -1228,11 +1228,11 @@ function fillChatInfoModal(groupDetails) {
 // Функція для відкриття та заповнення модального вікна додавання учасників
 async function openAddMembersModal() {
     if (!currentGroupChat || !currentGroupDetails) {
-        alert('Please select a group chat first.');
+        // alert('Please select a group chat first.');
         return;
     }
     if (currentGroupDetails.creator_id !== currentUserId) {
-        alert('Only the group creator can add new members.');
+        // alert('Only the group creator can add new members.');
         return;
     }
 
