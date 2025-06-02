@@ -101,12 +101,11 @@
                     <div class="chat-header">
                         <h3 class="chat-title" id="chatTitle">Select a chat</h3>
                         <div class="chat-actions">
-                            <!-- Кнопки будуть показуватись/ховатись залежно від типу чату -->
-                            <button class="chat-action-btn" id="addMembersToGroupBtn" title="Add members to group" style="display: none;">
-                                <i class="fas fa-user-plus"></i>
-                            </button>
                             <button class="chat-action-btn" id="groupInfoBtn" title="Group info" style="display: none;">
                                 <i class="fas fa-info-circle"></i>
+                            </button>
+                            <button class="chat-action-btn" id="addMembersToGroupBtn" title="Add members to group" style="display: none;">
+                                <i class="fas fa-user-plus"></i>
                             </button>
                         </div>
                     </div>
@@ -223,49 +222,26 @@
     <div class="cmodal-overlay" id="addMembersModal" style="display: none;">
         <div class="cmodal-content">
             <div class="cmodal-header">
-                <h2>Add Members</h2>
+                <h2>Add Members to <span id="addMembersGroupName"></span></h2>
                 <span class="cclose" id="closeAddMembersModal">&times;</span>
             </div>
             <div class="cmodal-body">
                 <div class="form-group">
-                    <label>Select Students to Add:</label>
+                    <label>Select Users to Add:</label>
                     <div class="search-box">
-                        <input type="text" id="addMemberSearch" placeholder="Search students...">
+                        <input type="text" id="addMemberSearch" placeholder="Search users...">
                     </div>
                     <div class="selected-count" id="addMemberSelectedCount" style="display: none;">
-                        Selected: 0 students
+                        Selected: 0 users
                     </div>
                     <div class="student-list" id="addMembersList">
-                        <div class="student-item" data-id="7">
-                            <input type="checkbox" id="addStudent7">
-                            <div class="student-info">
-                                <div class="student-name">Alex Thompson</div>
-                                <div class="student-group">Group C</div>
-                            </div>
-                            <div class="student-avatar">A</div>
-                        </div>
-                        <div class="student-item" data-id="8">
-                            <input type="checkbox" id="addStudent8">
-                            <div class="student-info">
-                                <div class="student-name">Lisa White</div>
-                                <div class="student-group">Group B</div>
-                            </div>
-                            <div class="student-avatar">L</div>
-                        </div>
-                        <div class="student-item" data-id="9">
-                            <input type="checkbox" id="addStudent9">
-                            <div class="student-info">
-                                <div class="student-name">Ryan Miller</div>
-                                <div class="student-group">Group A</div>
-                            </div>
-                            <div class="student-avatar">R</div>
-                        </div>
+                        <!-- Сюди будуть завантажуватися користувачі, яких можна додати -->
                     </div>
                 </div>
 
                 <div class="cmodal-footer">
                     <button class="cbutton-cancel" id="cancelAddMembersBtn">Cancel</button>
-                    <button class="cbutton-create" id="addMembersBtn" disabled>Add Members</button>
+                    <button class="cbutton-create" id="confirmAddMembersBtn" disabled>Add Selected</button> 
                 </div>
             </div>
         </div>
@@ -280,32 +256,34 @@
             </div>
             <div class="cmodal-body">
                 <div class="form-group">
-                    <label>Chat Name:</label>
+                    <label for="editChatName">Chat Name:</label>
                     <input type="text" id="editChatName" placeholder="Chat name">
+                    <span class="error-message" id="editChatNameError"></span>
                 </div>
 
+                <!-- Поки що поле опису не додаємо, щоб не ускладнювати
                 <div class="form-group">
-                    <label>Description:</label>
+                    <label for="chatDescription">Description:</label>
                     <textarea id="chatDescription" placeholder="Chat description (optional)"></textarea>
                 </div>
+                -->
 
                 <div class="form-group">
-                    <label>Members:</label>
-                    <div class="student-list" id="chatMembersList">
-                        <div class="student-item">
+                    <label>Members (<span id="chatMemberCount">0</span>):</label>
+                    <div class="student-list members-list" id="chatMembersList">
+                        <!-- Учасники групи будуть додані сюди динамічно -->
+                        <!-- Приклад учасника:
+                        <div class="student-item" data-user-id="1">
+                            <div class="student-avatar">A</div>
                             <div class="student-info">
                                 <div class="student-name">Admin</div>
-                                <div class="student-group">Administrator</div>
+                                <div class="student-group">Creator</div> 
                             </div>
-                            <div class="student-avatar">A</div>
+                            <button class="button-remove-member" data-user-id="1" title="Remove member">
+                                <i class="fas fa-times"></i>
+                            </button>
                         </div>
-                        <div class="student-item">
-                            <div class="student-info">
-                                <div class="student-name">John Smith</div>
-                                <div class="student-group">Group A</div>
-                            </div>
-                            <div class="student-avatar">J</div>
-                        </div>
+                        -->
                     </div>
                 </div>
 

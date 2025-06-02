@@ -129,7 +129,7 @@ async function getActiveChats(userId) {
     const oneOnOneChatPartners = {}; // partnerId -> { lastMessage object }
     for (const msg of oneOnOneMessages) {
         const partnerId = msg.sender_id === userId ? msg.recipient_id : msg.sender_id;
-        if (partnerId === null || partnerId === userId) continue;
+        if (partnerId === null || partnerId === userId) continue; // Skip messages to/from nobody or self in this context
         if (!oneOnOneChatPartners[partnerId] || new Date(msg.timestamp) > new Date(oneOnOneChatPartners[partnerId].timestamp)) {
             oneOnOneChatPartners[partnerId] = {
                 text: msg.message,
@@ -151,13 +151,14 @@ async function getActiveChats(userId) {
             const partnerId = parseInt(partnerIdStr);
             if (userMap[partnerId]) {
                 activeChats.push({
-                    id: partnerId,
+                    id: partnerId, // MySQL user ID
                     name: userMap[partnerId],
                     isGroup: false,
                     lastMessage: {
                         text: oneOnOneChatPartners[partnerId].text,
                         timestamp: oneOnOneChatPartners[partnerId].timestamp,
-                        senderIsSelf: oneOnOneChatPartners[partnerId].sender_id === userId
+                        senderIsSelf: oneOnOneChatPartners[partnerId].sender_id === userId,
+                        // senderName for 1-on-1 is implicitly the chat partner if not self
                     },
                     avatarLetter: userMap[partnerId]?.[0]?.toUpperCase() || '?'
                 });
@@ -169,50 +170,95 @@ async function getActiveChats(userId) {
     const userGroupChats = await GroupChat.find({ members: userId }).lean();
 
     for (const group of userGroupChats) {
-        const lastGroupMessage = await Message.findOne({ group_chat_id: group._id.toString() }) // Використовуємо _id з MongoDB
+        const lastGroupMessage = await Message.findOne({ group_chat_id: group._id.toString() })
             .sort({ timestamp: -1 })
             .lean();
 
+        let lastMessageDetails = {
+            text: 'New group. No messages yet.',
+            timestamp: group.created_at || new Date(0), // Use group creation if no messages
+            senderName: 'System',
+            senderIsSelf: false
+        };
+
         if (lastGroupMessage) {
-            let senderName = 'System';
+            let senderName = 'System'; // Default if sender_id is null (e.g. old system messages)
             if (lastGroupMessage.sender_id) {
-                // Імена користувачів все ще беремо з MySQL, як домовлялися
-                const [senderUser] = await pool.query('SELECT username FROM users WHERE id = ?', [lastGroupMessage.sender_id]);
-                if (senderUser.length > 0) {
-                    senderName = senderUser[0].username;
+                if (lastGroupMessage.sender_id === userId) {
+                    senderName = 'You';
+                } else {
+                    // Імена користувачів все ще беремо з MySQL
+                    const [senderUser] = await pool.query('SELECT username FROM users WHERE id = ?', [lastGroupMessage.sender_id]);
+                    if (senderUser.length > 0) {
+                        senderName = senderUser[0].username;
+                    } else {
+                        senderName = 'Unknown User'; // If user not found in MySQL
+                    }
                 }
             }
-            activeChats.push({
-                id: group._id.toString(), // ID групи з MongoDB
-                name: group.name,
-                isGroup: true,
-                lastMessage: {
-                    text: lastGroupMessage.message,
-                    timestamp: lastGroupMessage.timestamp,
-                    senderName: lastGroupMessage.sender_id === userId ? 'You' : senderName,
-                    senderIsSelf: lastGroupMessage.sender_id === userId
-                },
-                avatarLetter: group.name?.[0]?.toUpperCase() || 'G'
-            });
-        } else {
-            activeChats.push({
-                id: group._id.toString(), // ID групи з MongoDB
-                name: group.name,
-                isGroup: true,
-                lastMessage: {
-                    text: 'New group. No messages yet.',
-                    timestamp: group.created_at || new Date(0),
-                    senderName: 'System',
-                    senderIsSelf: false
-                },
-                avatarLetter: group.name?.[0]?.toUpperCase() || 'G'
-            });
+            lastMessageDetails = {
+                text: lastGroupMessage.message,
+                timestamp: lastGroupMessage.timestamp,
+                senderName: senderName,
+                senderIsSelf: lastGroupMessage.sender_id === userId
+            };
         }
+        
+        activeChats.push({
+            id: group._id.toString(), // ID групи з MongoDB
+            name: group.name,
+            isGroup: true,
+            lastMessage: lastMessageDetails,
+            avatarLetter: group.name?.[0]?.toUpperCase() || 'G',
+            creator_id: group.creator_id // Додаємо creator_id сюди для клієнта
+        });
     }
 
     // 3. Сортувати всі чати за часом останнього повідомлення
     activeChats.sort((a, b) => new Date(b.lastMessage.timestamp) - new Date(a.lastMessage.timestamp));
     return activeChats;
+}
+
+async function getGroupChatDetails(groupId, requestingUserId) {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(groupId)) {
+            return { error: 'Invalid group ID format.' };
+        }
+        const group = await GroupChat.findById(groupId).lean();
+        if (!group) {
+            return { error: 'Group not found.' };
+        }
+
+        // Перевірка, чи запитуючий користувач є учасником групи (можна зняти, якщо адмін може дивитись будь-які)
+        // if (!group.members.includes(requestingUserId)) {
+        //     return { error: 'Access denied. You are not a member of this group.' };
+        // }
+
+        const memberIds = group.members;
+        let membersWithNames = [];
+        if (memberIds && memberIds.length > 0) {
+            const [users] = await pool.query('SELECT id, username FROM users WHERE id IN (?)', [memberIds]);
+            const userMap = users.reduce((acc, user) => {
+                acc[user.id] = user.username;
+                return acc;
+            }, {});
+            membersWithNames = memberIds.map(id => ({
+                id: id,
+                username: userMap[id] || `User ${id}` // Fallback if user not in MySQL
+            }));
+        }
+        
+        return {
+            id: group._id.toString(),
+            name: group.name,
+            creator_id: group.creator_id,
+            created_at: group.created_at,
+            members: membersWithNames
+        };
+    } catch (error) {
+        console.error('Error fetching group chat details:', error);
+        return { error: 'Server error while fetching group details.' };
+    }
 }
 
 async function createGroupChat(name, memberIds, creatorId) {
@@ -451,6 +497,225 @@ io.on('connection', async (socket) => {
         } catch (error) {
             console.error("Error in get_chat_history event handler:", error);
             socket.emit('message_history', { messages: [] });
+        }
+    });
+
+    socket.on('get_group_chat_details', async ({ groupId }) => {
+        const userData = activeUsers.get(socket.id);
+        if (!userData || !userData.userId) {
+            socket.emit('group_chat_details_response', { error: 'Authentication required.' });
+            return;
+        }
+        const details = await getGroupChatDetails(groupId, userData.userId);
+        socket.emit('group_chat_details_response', details);
+    });
+
+    socket.on('update_group_chat_info', async ({ groupId, newName }) => {
+        const userData = activeUsers.get(socket.id);
+        if (!userData || !userData.userId) {
+            socket.emit('group_chat_update_response', { error: 'Authentication required.' });
+            return;
+        }
+        if (!mongoose.Types.ObjectId.isValid(groupId)) {
+            socket.emit('group_chat_update_response', { error: 'Invalid group ID.' });
+            return;
+        }
+
+        try {
+            const group = await GroupChat.findById(groupId);
+            if (!group) {
+                socket.emit('group_chat_update_response', { error: 'Group not found.' });
+                return;
+            }
+            if (group.creator_id !== userData.userId) {
+                socket.emit('group_chat_update_response', { error: 'Only the group creator can change the name.' });
+                return;
+            }
+            if (!newName || newName.trim().length === 0 || newName.trim().length > 100) {
+                socket.emit('group_chat_update_response', { error: 'Invalid group name. Must be 1-100 characters.' });
+                return;
+            }
+
+            const oldName = group.name;
+            group.name = newName.trim();
+            await group.save();
+            
+            const systemMessage = `${userData.username} changed the group name from "${oldName}" to "${group.name}".`;
+            await saveMessage(null, null, systemMessage, groupId); // sender_id = null for system
+
+            await notifyUsersToUpdateChatList(group.members);
+            // Також надішлемо оновлені деталі всім учасникам
+            const updatedDetails = await getGroupChatDetails(groupId, null); // null, бо системне оновлення
+            group.members.forEach(memberId => {
+                const memberSockets = userSockets.get(memberId);
+                if (memberSockets) {
+                    memberSockets.forEach(socketId => {
+                        io.to(socketId).emit('group_chat_updated', updatedDetails);
+                    });
+                }
+            });
+
+            socket.emit('group_chat_update_response', { success: true, newName: group.name, groupDetails: updatedDetails });
+        } catch (error) {
+            console.error('Error updating group chat name:', error);
+            socket.emit('group_chat_update_response', { error: 'Server error while updating group name.' });
+        }
+    });
+    
+    socket.on('add_members_to_group', async ({ groupId, memberIdsToAdd }) => {
+        const userData = activeUsers.get(socket.id);
+        if (!userData || !userData.userId) {
+            socket.emit('group_members_update_response', { error: 'Authentication required.' });
+            return;
+        }
+        if (!mongoose.Types.ObjectId.isValid(groupId)) {
+            socket.emit('group_members_update_response', { error: 'Invalid group ID.' });
+            return;
+        }
+        if (!Array.isArray(memberIdsToAdd) || memberIdsToAdd.some(id => isNaN(parseInt(id)))) {
+            socket.emit('group_members_update_response', { error: 'Invalid member IDs format.' });
+            return;
+        }
+
+        try {
+            const group = await GroupChat.findById(groupId);
+            if (!group) {
+                socket.emit('group_members_update_response', { error: 'Group not found.' });
+                return;
+            }
+            if (group.creator_id !== userData.userId) {
+                socket.emit('group_members_update_response', { error: 'Only the group creator can add members.' });
+                return;
+            }
+
+            const numericMemberIdsToAdd = memberIdsToAdd.map(id => parseInt(id));
+            const newMembers = numericMemberIdsToAdd.filter(id => !group.members.includes(id) && id !== userData.userId); // Creator is already a member or implicitly added
+
+            if (newMembers.length === 0) {
+                socket.emit('group_members_update_response', { error: 'No new members to add or selected users are already in the group.' });
+                return;
+            }
+
+            group.members.push(...newMembers);
+            await group.save();
+
+            // Отримати імена нових учасників для системного повідомлення
+            const [addedUsersData] = await pool.query('SELECT id, username FROM users WHERE id IN (?)', [newMembers]);
+            const addedUsernames = addedUsersData.map(u => u.username).join(', ');
+            
+            const systemMessage = `${userData.username} added ${addedUsernames} to the group.`;
+            await saveMessage(null, null, systemMessage, groupId);
+
+            await notifyUsersToUpdateChatList(group.members); // Повідомити всіх (включаючи нових)
+
+            const updatedDetails = await getGroupChatDetails(groupId, null);
+             group.members.forEach(memberId => { // Повідомити всіх поточних учасників
+                const memberSockets = userSockets.get(memberId);
+                if (memberSockets) {
+                    memberSockets.forEach(socketId => {
+                        io.to(socketId).emit('group_chat_updated', updatedDetails);
+                    });
+                }
+            });
+
+            socket.emit('group_members_update_response', { success: true, message: `${addedUsernames} added.`, groupDetails: updatedDetails });
+
+        } catch (error) {
+            console.error('Error adding members to group:', error);
+            socket.emit('group_members_update_response', { error: 'Server error while adding members.' });
+        }
+    });
+
+    socket.on('remove_member_from_group', async ({ groupId, memberIdToRemove }) => {
+        const userData = activeUsers.get(socket.id); // той, хто ініціює видалення
+        if (!userData || !userData.userId) {
+            socket.emit('group_members_update_response', { error: 'Authentication required.' });
+            return;
+        }
+        if (!mongoose.Types.ObjectId.isValid(groupId) || isNaN(parseInt(memberIdToRemove))) {
+            socket.emit('group_members_update_response', { error: 'Invalid group or member ID.' });
+            return;
+        }
+        
+        const numericMemberIdToRemove = parseInt(memberIdToRemove);
+
+        try {
+            const group = await GroupChat.findById(groupId);
+            if (!group) {
+                socket.emit('group_members_update_response', { error: 'Group not found.' });
+                return;
+            }
+
+            const isCreator = group.creator_id === userData.userId;
+            const isSelfLeave = userData.userId === numericMemberIdToRemove;
+
+            if (!group.members.includes(numericMemberIdToRemove)) {
+                 socket.emit('group_members_update_response', { error: 'User is not a member of this group.' });
+                return;
+            }
+
+            if (!isCreator && !isSelfLeave) {
+                socket.emit('group_members_update_response', { error: 'You do not have permission to remove this member.' });
+                return;
+            }
+            if (isCreator && group.creator_id === numericMemberIdToRemove) {
+                 socket.emit('group_members_update_response', { error: 'Creator cannot leave the group. You can delete the group instead (feature not implemented).' }); // Або передати права
+                return;
+            }
+            if (group.members.length === 1 && numericMemberIdToRemove === group.members[0]) {
+                 socket.emit('group_members_update_response', { error: 'Cannot remove the last member. Delete the group instead (feature not implemented).' });
+                return;
+            }
+
+
+            const originalMembers = [...group.members];
+            group.members = group.members.filter(id => id !== numericMemberIdToRemove);
+            await group.save();
+
+            // Отримати ім'я видаленого учасника та того, хто видалив (якщо це не сам учасник)
+            const [[removedUserData], [removerUserData]] = await Promise.all([
+                pool.query('SELECT id, username FROM users WHERE id = ?', [numericMemberIdToRemove]),
+                pool.query('SELECT id, username FROM users WHERE id = ?', [userData.userId])
+            ]);
+            const removedUsername = removedUserData.length > 0 ? removedUserData[0].username : `User ${numericMemberIdToRemove}`;
+            const removerUsername = removerUserData.length > 0 ? removerUserData[0].username : `User ${userData.userId}`;
+
+            let systemMessage;
+            if (isSelfLeave) {
+                systemMessage = `${removedUsername} left the group.`;
+            } else { // Видалено творцем
+                systemMessage = `${removerUsername} removed ${removedUsername} from the group.`;
+            }
+            await saveMessage(null, null, systemMessage, groupId);
+
+            // Повідомити всіх колишніх та поточних учасників
+            await notifyUsersToUpdateChatList([...new Set([...originalMembers, ...group.members])]);
+
+            const updatedDetails = await getGroupChatDetails(groupId, null);
+            // Повідомити поточних учасників про оновлення
+            group.members.forEach(memberId => {
+                const memberSockets = userSockets.get(memberId);
+                if (memberSockets) {
+                    memberSockets.forEach(socketId => {
+                        io.to(socketId).emit('group_chat_updated', updatedDetails);
+                    });
+                }
+            });
+            // Повідомити видаленого учасника, що його деталі чату теж треба оновити (він його більше не бачить)
+            const removedUserSockets = userSockets.get(numericMemberIdToRemove);
+            if (removedUserSockets) {
+                 removedUserSockets.forEach(socketId => {
+                    // Можна надіслати спеціальну подію "removed_from_group" або просто оновити список чатів
+                    io.to(socketId).emit('group_chat_removed_or_left', { groupId }); // Клієнт має обробити це
+                 });
+            }
+
+
+            socket.emit('group_members_update_response', { success: true, message: `${removedUsername} removed/left.`, groupDetails: updatedDetails });
+
+        } catch (error) {
+            console.error('Error removing member from group:', error);
+            socket.emit('group_members_update_response', { error: 'Server error while removing member.' });
         }
     });
 
