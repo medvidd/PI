@@ -3,7 +3,7 @@ const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http, {
     cors: {
-        origin: "*", // Дозволити всі джерела (для розробки)
+        origin: "*",
         methods: ["GET", "POST"]
     }
 });
@@ -13,37 +13,30 @@ const mongoose = require('mongoose');
 const Message = require('./models/Message');
 const GroupChat = require('./models/GroupChat');
 
-app.use(cors()); // Дозволити CORS для всіх HTTP запитів
+app.use(cors());
 app.use(express.json());
 
 const dbConfig = {
     host: 'localhost',
     user: 'root',
-    password: '', // Ваш пароль, якщо є
+    password: '',
     database: 'stumanager'
 };
 
 const pool = mysql.createPool(dbConfig);
 
-// MongoDB підключення
 mongoose.connect('mongodb://127.0.0.1:27017/stumanager_chat')
     .then(() => {
-        console.log('MongoDB підключено успішно');
-        // Створюємо індекси для оптимізації пошуку
+        console.log('MongoDB connected');
         return Promise.all([
             Message.createIndexes(),
             GroupChat.createIndexes()
         ]);
     })
-    .then(() => {
-        console.log('MongoDB індекси створено для Message та GroupChat');
-    })
-    .catch((err) => {
-        console.error('Помилка підключення до MongoDB:', err);
-    });
 
-const activeUsers = new Map(); // socket.id -> { username, userId }
-const userSockets = new Map(); // userId -> Set of socket.ids (один користувач може мати кілька вкладок)
+//Sockets    
+const activeUsers = new Map(); 
+const userSockets = new Map();
 
 async function updateUserStatus(userId, status, page = null) {
     try {
@@ -55,7 +48,6 @@ async function updateUserStatus(userId, status, page = null) {
             [status, userId]
         );
 
-        // Оновлюємо статус в таблиці students
         await pool.query(
             'UPDATE students SET active = ? WHERE user_id = ?',
             [status === 'online' ? 1 : 0, userId]
@@ -70,13 +62,11 @@ async function updateUserStatus(userId, status, page = null) {
 
 async function checkInactiveUsers() {
     try {
-        // Знаходимо користувачів, які були неактивні протягом 5 хвилин
         const [inactiveUsers] = await pool.query(
             'SELECT id FROM users WHERE status = "online" AND last_activity < NOW() - INTERVAL 5 MINUTE'
         );
         
         for (const user of inactiveUsers) {
-            // Check if user has any active sockets before setting to offline
             const userSocketSet = userSockets.get(user.id);
             if (!userSocketSet || userSocketSet.size === 0) {
                 await updateUserStatus(user.id, 'offline');
@@ -87,7 +77,6 @@ async function checkInactiveUsers() {
     }
 }
 
-// Перевіряємо неактивних користувачів кожні 5 хвилин
 setInterval(checkInactiveUsers, 5 * 60 * 1000);
 
 async function getUserStatuses() {
@@ -116,20 +105,20 @@ async function broadcastUserStatuses() {
     io.emit('user_statuses', { statuses });
 }
 
-// Нова функція для отримання активних чатів
+
 async function getActiveChats(userId) {
     let activeChats = [];
 
-    // 1. Отримати 1-на-1 чати з повідомленнями
+    // individual chats
     const oneOnOneMessages = await Message.find({
         $or: [{ sender_id: userId }, { recipient_id: userId }],
         group_chat_id: null
     }).sort({ timestamp: -1 }).lean();
 
-    const oneOnOneChatPartners = {}; // partnerId -> { lastMessage object }
+    const oneOnOneChatPartners = {}; 
     for (const msg of oneOnOneMessages) {
         const partnerId = msg.sender_id === userId ? msg.recipient_id : msg.sender_id;
-        if (partnerId === null || partnerId === userId) continue; // Skip messages to/from nobody or self in this context
+        if (partnerId === null || partnerId === userId) continue; 
         if (!oneOnOneChatPartners[partnerId] || new Date(msg.timestamp) > new Date(oneOnOneChatPartners[partnerId].timestamp)) {
             oneOnOneChatPartners[partnerId] = {
                 text: msg.message,
@@ -151,14 +140,14 @@ async function getActiveChats(userId) {
             const partnerId = parseInt(partnerIdStr);
             if (userMap[partnerId]) {
                 activeChats.push({
-                    id: partnerId, // MySQL user ID
+                    id: partnerId, 
                     name: userMap[partnerId],
                     isGroup: false,
                     lastMessage: {
                         text: oneOnOneChatPartners[partnerId].text,
                         timestamp: oneOnOneChatPartners[partnerId].timestamp,
                         senderIsSelf: oneOnOneChatPartners[partnerId].sender_id === userId,
-                        // senderName for 1-on-1 is implicitly the chat partner if not self
+                        
                     },
                     avatarLetter: userMap[partnerId]?.[0]?.toUpperCase() || '?'
                 });
@@ -166,7 +155,7 @@ async function getActiveChats(userId) {
         }
     }
 
-    // 2. Отримати групові чати, до яких належить користувач (з MongoDB)
+    // group chats
     const userGroupChats = await GroupChat.find({ members: userId }).lean();
 
     for (const group of userGroupChats) {
@@ -176,23 +165,22 @@ async function getActiveChats(userId) {
 
         let lastMessageDetails = {
             text: 'New group. No messages yet.',
-            timestamp: group.created_at || new Date(0), // Use group creation if no messages
+            timestamp: group.created_at || new Date(0), 
             senderName: 'System',
             senderIsSelf: false
         };
 
         if (lastGroupMessage) {
-            let senderName = 'System'; // Default if sender_id is null (e.g. old system messages)
+            let senderName = 'System';
             if (lastGroupMessage.sender_id) {
                 if (lastGroupMessage.sender_id === userId) {
                     senderName = 'You';
                 } else {
-                    // Імена користувачів все ще беремо з MySQL
                     const [senderUser] = await pool.query('SELECT username FROM users WHERE id = ?', [lastGroupMessage.sender_id]);
                     if (senderUser.length > 0) {
                         senderName = senderUser[0].username;
                     } else {
-                        senderName = 'Unknown User'; // If user not found in MySQL
+                        senderName = 'Unknown User'; 
                     }
                 }
             }
@@ -205,16 +193,16 @@ async function getActiveChats(userId) {
         }
         
         activeChats.push({
-            id: group._id.toString(), // ID групи з MongoDB
+            id: group._id.toString(), 
             name: group.name,
             isGroup: true,
             lastMessage: lastMessageDetails,
             avatarLetter: group.name?.[0]?.toUpperCase() || 'G',
-            creator_id: group.creator_id // Додаємо creator_id сюди для клієнта
+            creator_id: group.creator_id 
         });
     }
 
-    // 3. Сортувати всі чати за часом останнього повідомлення
+    // sorting chats
     activeChats.sort((a, b) => new Date(b.lastMessage.timestamp) - new Date(a.lastMessage.timestamp));
     return activeChats;
 }
@@ -229,11 +217,6 @@ async function getGroupChatDetails(groupId, requestingUserId) {
             return { error: 'Group not found.' };
         }
 
-        // Перевірка, чи запитуючий користувач є учасником групи (можна зняти, якщо адмін може дивитись будь-які)
-        // if (!group.members.includes(requestingUserId)) {
-        //     return { error: 'Access denied. You are not a member of this group.' };
-        // }
-
         const memberIds = group.members;
         let membersWithNames = [];
         if (memberIds && memberIds.length > 0) {
@@ -244,7 +227,7 @@ async function getGroupChatDetails(groupId, requestingUserId) {
             }, {});
             membersWithNames = memberIds.map(id => ({
                 id: id,
-                username: userMap[id] || `User ${id}` // Fallback if user not in MySQL
+                username: userMap[id] || `User ${id}`
             }));
         }
         
@@ -272,7 +255,7 @@ async function createGroupChat(name, memberIds, creatorId) {
         const savedGroupChat = await newGroupChat.save();
         console.log('Груповий чат створено в MongoDB:', savedGroupChat);
         return { 
-            id: savedGroupChat._id.toString(), // Повертаємо ID з MongoDB
+            id: savedGroupChat._id.toString(), 
             name: savedGroupChat.name, 
             members: savedGroupChat.members,
             creator_id: savedGroupChat.creator_id
@@ -285,7 +268,6 @@ async function createGroupChat(name, memberIds, creatorId) {
 
 async function saveMessage(senderId, recipientId, message, groupChatId = null) {
     try {
-        // Зберігаємо в MongoDB
         const mongoMessage = new Message({
             sender_id: senderId,
             recipient_id: recipientId,
@@ -303,26 +285,20 @@ async function saveMessage(senderId, recipientId, message, groupChatId = null) {
 
         let groupName = null;
         if (groupChatId) {
-            // Перевірка, чи groupChatId є валідним ObjectId перед пошуком
             if (mongoose.Types.ObjectId.isValid(groupChatId.toString())) {
                 const group = await GroupChat.findById(groupChatId.toString()).lean();
                 if (group) {
                     groupName = group.name;
                 } else {
-                    console.warn(`Group not found in MongoDB with ID: ${groupChatId.toString()} (saveMessage)`);
-                    // Якщо група не знайдена за валідним ObjectId, можливо, її видалили
-                    // Або це ID, який не є ObjectId і пройшов перевірку isValid (малоймовірно, але можливо для деяких рядків)
-                }
+                    console.warn(`Group not found in MongoDB with ID: ${groupChatId.toString()} (saveMessage)`);}
             } else {
                 console.error(`Invalid ObjectId format for groupChatId: ${groupChatId} in saveMessage. Message not linked to group name.`);
-                // Тут groupChatId в повідомленні буде збережено, але groupName не буде отримано.
-                // Це запобігає CastError, але проблема з неправильним ID від клієнта залишається.
             }
         }
         
         const fullSavedMessage = {
             _id: savedMongoMessage._id.toString(),
-            id: savedMongoMessage._id.toString(), // для сумісності, якщо десь використовується id замість _id
+            id: savedMongoMessage._id.toString(),
             sender: {
                 id: savedMongoMessage.sender_id,
                 username: senderName 
@@ -331,7 +307,7 @@ async function saveMessage(senderId, recipientId, message, groupChatId = null) {
             group_chat_id: savedMongoMessage.group_chat_id,
             message: savedMongoMessage.message,
             timestamp: savedMongoMessage.timestamp,
-            group_name: groupName // Додаємо groupName до об'єкту, що повертається
+            group_name: groupName 
         };
 
         if (fullSavedMessage.group_chat_id) {
@@ -342,8 +318,6 @@ async function saveMessage(senderId, recipientId, message, groupChatId = null) {
         
         return fullSavedMessage;
     } catch (error) {
-        // Якщо помилка виникла на етапі mongoMessage.save(), наприклад, через невалідний group_chat_id у схемі
-        // (якщо б тип був ObjectId а не String), то вона буде зловлена тут.
         console.error('Error saving message to MongoDB (could be during .save() or other operation):', error);
         return null;
     }
@@ -353,7 +327,6 @@ async function getMessageHistory(userId1, userId2, groupChatId = null) {
     try {
         let mongoQuery;
         if (groupChatId) {
-            // Переконуємося, що groupChatId є string
             mongoQuery = { group_chat_id: groupChatId.toString() };
         } else {
             mongoQuery = {
@@ -378,7 +351,6 @@ async function getMessageHistory(userId1, userId2, groupChatId = null) {
         let userMap = {};
 
         if (userIds.length > 0) {
-            // Імена користувачів все ще беремо з MySQL
             const [users] = await pool.query(
                 'SELECT id, username FROM users WHERE id IN (?)',
                 [userIds]
@@ -407,13 +379,12 @@ async function getMessageHistory(userId1, userId2, groupChatId = null) {
 
 io.on('connection', async (socket) => {
     console.log('Користувач підключився:', socket.id);
-    // await broadcastUserStatuses(); // Тепер викликається після успішної аутентифікації або активності
 
     socket.on('auth', async (userData) => {
         const { username, id: userId } = userData;
         console.log(`Користувач авторизувався: ${username} (ID: ${userId}), socket: ${socket.id}`);
         
-        activeUsers.set(socket.id, { username, userId, socket }); // Зберігаємо сам сокет
+        activeUsers.set(socket.id, { username, userId, socket }); 
         
         if (!userSockets.has(userId)) {
             userSockets.set(userId, new Set());
@@ -421,9 +392,7 @@ io.on('connection', async (socket) => {
         userSockets.get(userId).add(socket.id);
         
         await updateUserStatus(userId, 'online');
-        // Клієнт сам запросить список чатів після 'auth'
-        // socket.emit('active_chats_list', await getActiveChats(userId));
-        await broadcastUserStatuses(); // Оновлюємо статуси для всіх
+        await broadcastUserStatuses(); 
     });
 
     socket.on('get_active_chats', async () => {
@@ -434,12 +403,11 @@ io.on('connection', async (socket) => {
                 socket.emit('active_chats_list', chats);
             } catch (error) {
                 console.error(`Error in get_active_chats for user ${userData.userId}:`, error);
-                socket.emit('active_chats_list', []); // Повертаємо порожній масив у разі помилки
+                socket.emit('active_chats_list', []); 
             }
         }
     });
 
-    // Функція для сповіщення користувачів про необхідність оновити список чатів
     async function notifyUsersToUpdateChatList(targetUserIds) {
         if (!Array.isArray(targetUserIds)) {
             targetUserIds = [targetUserIds];
@@ -469,7 +437,6 @@ io.on('connection', async (socket) => {
     socket.on('logout', async () => {
         const userData = activeUsers.get(socket.id);
         if (userData) {
-            // updateUserStatus викликає broadcastUserStatuses
             await updateUserStatus(userData.userId, 'offline');
             activeUsers.delete(socket.id);
             const userSocketSet = userSockets.get(userData.userId);
@@ -486,11 +453,10 @@ io.on('connection', async (socket) => {
         const userData = activeUsers.get(socket.id);
         if (!userData || !userData.userId) {
             console.warn("Attempt to get chat history by unauthenticated/unknown user");
-            socket.emit('message_history', { messages: [] }); // Повертаємо порожній масив
+            socket.emit('message_history', { messages: [] }); 
             return;
         }
         const currentUserIdForHistory = userData.userId;
-        // console.log(`Getting history for: current=${currentUserIdForHistory}, other=${userId2}, group=${groupChatId}`);
         try {
             const messages = await getMessageHistory(currentUserIdForHistory, userId2, groupChatId);
             socket.emit('message_history', { messages });
@@ -541,11 +507,10 @@ io.on('connection', async (socket) => {
             await group.save();
             
             const systemMessage = `${userData.username} changed the group name from "${oldName}" to "${group.name}".`;
-            await saveMessage(null, null, systemMessage, groupId); // sender_id = null for system
+            await saveMessage(null, null, systemMessage, groupId);
 
             await notifyUsersToUpdateChatList(group.members);
-            // Також надішлемо оновлені деталі всім учасникам
-            const updatedDetails = await getGroupChatDetails(groupId, null); // null, бо системне оновлення
+            const updatedDetails = await getGroupChatDetails(groupId, null);
             group.members.forEach(memberId => {
                 const memberSockets = userSockets.get(memberId);
                 if (memberSockets) {
@@ -599,17 +564,16 @@ io.on('connection', async (socket) => {
             group.members.push(...newMembers);
             await group.save();
 
-            // Отримати імена нових учасників для системного повідомлення
             const [addedUsersData] = await pool.query('SELECT id, username FROM users WHERE id IN (?)', [newMembers]);
             const addedUsernames = addedUsersData.map(u => u.username).join(', ');
             
             const systemMessage = `${userData.username} added ${addedUsernames} to the group.`;
             await saveMessage(null, null, systemMessage, groupId);
 
-            await notifyUsersToUpdateChatList(group.members); // Повідомити всіх (включаючи нових)
+            await notifyUsersToUpdateChatList(group.members); 
 
             const updatedDetails = await getGroupChatDetails(groupId, null);
-             group.members.forEach(memberId => { // Повідомити всіх поточних учасників
+            group.members.forEach(memberId => { 
                 const memberSockets = userSockets.get(memberId);
                 if (memberSockets) {
                     memberSockets.forEach(socketId => {
@@ -627,7 +591,7 @@ io.on('connection', async (socket) => {
     });
 
     socket.on('remove_member_from_group', async ({ groupId, memberIdToRemove }) => {
-        const userData = activeUsers.get(socket.id); // той, хто ініціює видалення
+        const userData = activeUsers.get(socket.id); 
         if (!userData || !userData.userId) {
             socket.emit('group_members_update_response', { error: 'Authentication required.' });
             return;
@@ -659,7 +623,7 @@ io.on('connection', async (socket) => {
                 return;
             }
             if (isCreator && group.creator_id === numericMemberIdToRemove) {
-                 socket.emit('group_members_update_response', { error: 'Creator cannot leave the group. You can delete the group instead (feature not implemented).' }); // Або передати права
+                 socket.emit('group_members_update_response', { error: 'Creator cannot leave the group. You can delete the group instead (feature not implemented).' }); 
                 return;
             }
             if (group.members.length === 1 && numericMemberIdToRemove === group.members[0]) {
@@ -672,7 +636,6 @@ io.on('connection', async (socket) => {
             group.members = group.members.filter(id => id !== numericMemberIdToRemove);
             await group.save();
 
-            // Отримати ім'я видаленого учасника та того, хто видалив (якщо це не сам учасник)
             const [[removedUserData], [removerUserData]] = await Promise.all([
                 pool.query('SELECT id, username FROM users WHERE id = ?', [numericMemberIdToRemove]),
                 pool.query('SELECT id, username FROM users WHERE id = ?', [userData.userId])
@@ -683,16 +646,14 @@ io.on('connection', async (socket) => {
             let systemMessage;
             if (isSelfLeave) {
                 systemMessage = `${removedUsername} left the group.`;
-            } else { // Видалено творцем
+            } else { 
                 systemMessage = `${removerUsername} removed ${removedUsername} from the group.`;
             }
             await saveMessage(null, null, systemMessage, groupId);
 
-            // Повідомити всіх колишніх та поточних учасників
             await notifyUsersToUpdateChatList([...new Set([...originalMembers, ...group.members])]);
 
             const updatedDetails = await getGroupChatDetails(groupId, null);
-            // Повідомити поточних учасників про оновлення
             group.members.forEach(memberId => {
                 const memberSockets = userSockets.get(memberId);
                 if (memberSockets) {
@@ -701,12 +662,10 @@ io.on('connection', async (socket) => {
                     });
                 }
             });
-            // Повідомити видаленого учасника, що його деталі чату теж треба оновити (він його більше не бачить)
             const removedUserSockets = userSockets.get(numericMemberIdToRemove);
             if (removedUserSockets) {
                  removedUserSockets.forEach(socketId => {
-                    // Можна надіслати спеціальну подію "removed_from_group" або просто оновити список чатів
-                    io.to(socketId).emit('group_chat_removed_or_left', { groupId }); // Клієнт має обробити це
+                    io.to(socketId).emit('group_chat_removed_or_left', { groupId }); 
                  });
             }
 
@@ -730,11 +689,9 @@ io.on('connection', async (socket) => {
 
         const uniqueMemberIds = [...new Set([...members.map(id => parseInt(id)), creatorId])];
 
-        // Передаємо creatorId у функцію
         const groupChat = await createGroupChat(name, uniqueMemberIds, creatorId); 
         if (groupChat) {
             const systemMessageContent = `Group chat "${name}" created by ${creatorUsername}.`;
-            // groupChat.id тепер є _id з MongoDB (string)
             await saveMessage(creatorId, null, systemMessageContent, groupChat.id); 
 
             await notifyUsersToUpdateChatList(uniqueMemberIds);
@@ -742,14 +699,13 @@ io.on('connection', async (socket) => {
             const creatorSocketInfo = activeUsers.get(socket.id);
             if (creatorSocketInfo && creatorSocketInfo.socket) {
                 creatorSocketInfo.socket.emit('group_chat_creation_success', {
-                    id: groupChat.id, // Це вже _id з MongoDB (string)
+                    id: groupChat.id, 
                     name: groupChat.name,
-                    members: uniqueMemberIds, // Це масив ID
+                    members: uniqueMemberIds, 
                     isGroup: true
                 });
             }
         } else {
-            // Обробка помилки створення групи, якщо потрібно
             const creatorSocketInfo = activeUsers.get(socket.id);
             if(creatorSocketInfo && creatorSocketInfo.socket) {
                 creatorSocketInfo.socket.emit('group_chat_creation_failed', { name });
@@ -768,12 +724,8 @@ io.on('connection', async (socket) => {
 
         let savedMessage;
         if (groupChatId) {
-            // Повідомлення для групи
-            // groupChatId тут має бути _id з MongoDB (string)
             savedMessage = await saveMessage(senderId, null, message, groupChatId);
         } else if (recipients && recipients.length > 0) {
-            // Приватне повідомлення одному або кільком (якщо реалізовано)
-            // Для простоти, припустимо, що recipients - це масив з одним ID отримувача
             const recipientId = parseInt(recipients[0]); 
             if (!isNaN(recipientId)) {
                 savedMessage = await saveMessage(senderId, recipientId, message, null);
@@ -787,7 +739,6 @@ io.on('connection', async (socket) => {
         }
 
         if (savedMessage) {
-            // console.log('Повідомлення успішно збережено і готове до відправки:', savedMessage);
             if (savedMessage.group_chat_id) {
                 const group = await GroupChat.findById(savedMessage.group_chat_id).lean();
                 if (group && group.members) {
@@ -795,8 +746,6 @@ io.on('connection', async (socket) => {
                         const memberSockets = userSockets.get(memberId);
                         if (memberSockets) {
                             memberSockets.forEach(socketId => {
-                                // Надсилаємо повідомлення, ЯКЩО це не той самий сокет, з якого надіслано (для відправника)
-                                // АБО якщо це інший учасник групи (memberId !== senderId)
                                 if (socketId !== socket.id || memberId !== senderId) {
                                     io.to(socketId).emit('new_message', savedMessage);
                                 }
@@ -805,15 +754,12 @@ io.on('connection', async (socket) => {
                     });
                 }
             } else if (savedMessage.recipient_id) {
-                // Надсилаємо отримувачу
                 const recipientSockets = userSockets.get(savedMessage.recipient_id);
                 if (recipientSockets) {
                     recipientSockets.forEach(socketId => {
                         io.to(socketId).emit('new_message', savedMessage);
                     });
                 }
-                // Оновлення для відправника на інших його пристроях/вкладках, але не на поточній
-                // Ця логіка для 1-на-1 чатів, аналогічно груповим, має не надсилати на той самий сокет.
                 const senderUserSocketSet = userSockets.get(senderId); 
                 if (senderUserSocketSet) {
                     senderUserSocketSet.forEach(socketId => {
@@ -825,7 +771,6 @@ io.on('connection', async (socket) => {
             }
         } else {
             console.error('Не вдалося зберегти повідомлення:', messageData);
-            // Можна надіслати помилку відправнику
             const senderSocketInfo = activeUsers.get(socket.id);
             if(senderSocketInfo && senderSocketInfo.socket) {
                 senderSocketInfo.socket.emit('message_send_error', { 
@@ -846,20 +791,15 @@ io.on('connection', async (socket) => {
                 userSocketSet.delete(socket.id);
                 if (userSocketSet.size === 0) {
                     userSockets.delete(userData.userId);
-                    // updateUserStatus викликає broadcastUserStatuses
                     await updateUserStatus(userData.userId, 'offline');
                 } else {
-                    // Якщо залишились інші активні сесії, просто оновлюємо статуси
                     await broadcastUserStatuses();
                 }
             }
         } else {
-            // Якщо користувача не було в activeUsers (наприклад, не встиг авторизуватися)
-            // або якщо це було відключення, яке не обробилося коректно раніше
-            await broadcastUserStatuses(); // Загальне оновлення статусів
+            await broadcastUserStatuses(); 
         }
     });
-    // Не потрібно тут broadcastUserStatuses(), бо це відбувається при 'auth' або 'user_activity'
 });
 
 const PORT = process.env.PORT || 3000;

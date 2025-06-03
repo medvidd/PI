@@ -1,33 +1,26 @@
-// --- START OF FILE chat_script.js ---
-
-// Нове оголошення сокету для chat_script.js
-let socket; // Оголошуємо тут, щоб було доступно скрізь у файлі
+let socket; 
 if (typeof io !== 'undefined') {
     socket = io('http://localhost:3000');
-    window.chatSocket = socket; // Зберігаємо сокет чату в глобальний об'єкт window
+    window.chatSocket = socket; 
     console.log('Socket.IO підключено (chat_script.js) і збережено в window.chatSocket');
 } else {
     console.error('FATAL: io is not defined. Socket.IO library not loaded. (chat_script.js)');
-    // Можливо, тут варто запобігти подальшому виконанню скрипта, якщо сокет критичний
 }
 
-// Глобальні змінні
 let currentUserId = null;
 let currentUsername = null;
 let currentChat = null; 
 let currentGroupChat = null; 
-let userStatuses = {}; // Local cache of user statuses
-let activeChatList = []; // Local cache for the list of active chats
-let currentGroupDetails = null; // Зберігає деталі поточної відкритої групи
+let userStatuses = {}; 
+let activeChatList = []; 
+let currentGroupDetails = null; 
 
-// Функція для оновлення видимості кнопок керування групою
 function updateGroupActionButtonsVisibility() {
     const addMembersBtn = document.getElementById('addMembersToGroupBtn');
     const groupInfoBtn = document.getElementById('groupInfoBtn');
 
     if (currentGroupChat && currentGroupDetails) {
         if (groupInfoBtn) groupInfoBtn.style.display = 'inline-block';
-        // Кнопка додавання учасників та інші функції редагування доступні тільки творцю
         if (currentGroupDetails.creator_id === currentUserId) {
             if (addMembersBtn) addMembersBtn.style.display = 'inline-block';
         } else {
@@ -39,16 +32,15 @@ function updateGroupActionButtonsVisibility() {
     }
 }
 
-// Функція для оновлення UI хедера (скопійовано з script.js для автономності, якщо script.js не завантажено або зміниться)
 function updateChatHeaderUIForLoggedInUser(username) {
     const loginButton = document.getElementById('loginButton');
     const account = document.getElementById('account');
-    const notificationElement = document.getElementById('notification'); // Note: 'notification' is ID for the bell container
+    const notificationElement = document.getElementById('notification'); 
     const usernameDisplay = document.getElementById('usernameDisplay');
 
     if (loginButton) loginButton.style.display = 'none';
     if (account) account.style.display = 'flex';
-    if (notificationElement) notificationElement.style.display = 'block'; // Show bell
+    if (notificationElement) notificationElement.style.display = 'block'; 
     if (usernameDisplay) usernameDisplay.textContent = username;
 }
 
@@ -59,10 +51,9 @@ function updateChatHeaderUIForLoggedOutUser() {
 
     if (loginButton) loginButton.style.display = 'flex';
     if (account) account.style.display = 'none';
-    if (notificationElement) notificationElement.style.display = 'none'; // Hide bell
+    if (notificationElement) notificationElement.style.display = 'none'; 
 }
 
-// Допоміжна функція для оновлення стану червоної крапки (з script.js)
 function updateChatNotificationDotState() {
     const notificationContainer = document.getElementById('notification');
     if (!notificationContainer) return;
@@ -80,18 +71,16 @@ function updateChatNotificationDotState() {
     }
 }
 
-// Функція для показу сповіщення (з script.js, адаптована)
 function showChatNotification(messageData) {
-    console.log('[CHAT_SCRIPT] showChatNotification called with:', JSON.stringify(messageData, null, 2)); // Логування вхідних даних
-    // Переконуємося, що messageData та messageData.sender існують
+    console.log('[CHAT_SCRIPT] showChatNotification called with:', JSON.stringify(messageData, null, 2)); 
     if (!messageData || !messageData.sender) {
         console.error('showChatNotification: messageData or messageData.sender is undefined', messageData);
         return;
     }
 
     const { sender, message, recipient_id } = messageData;
-    const actualGroupChatIdFromServer = messageData.group_chat_id; // Це поле від сервера
-    const actualGroupNameFromServer = messageData.group_name;     // Це поле від сервера
+    const actualGroupChatIdFromServer = messageData.group_chat_id; 
+    const actualGroupNameFromServer = messageData.group_name;     
 
     const notificationContainer = document.getElementById('notification');
     if (!notificationContainer) return;
@@ -105,22 +94,18 @@ function showChatNotification(messageData) {
     if (chatWindowVisible) {
         if (actualGroupChatIdFromServer) {
             isChatActiveWithMessageSource = currentGroupChat === actualGroupChatIdFromServer;
-        } else if (currentChat) { // Тільки для 1-на-1, якщо currentChat існує
+        } else if (currentChat) { 
             isChatActiveWithMessageSource = (currentChat.toString() === sender.id.toString() && sender.id !== currentUserId) ||
                                           (currentChat.toString() === recipient_id?.toString() && sender.id === currentUserId);
         }
     }
 
-    if (isChatActiveWithMessageSource && sender.id !== currentUserId) { // Якщо чат активний І повідомлення від іншого
-        // console.log("Chat Notification suppressed: user in active chat with sender/group (chat_script.js).");
-        // Очистимо сповіщення, якщо воно було для цього чату, оскільки користувач вже бачить повідомлення
+    if (isChatActiveWithMessageSource && sender.id !== currentUserId) { 
         clearChatNotificationForSource(actualGroupChatIdFromServer ? actualGroupChatIdFromServer : sender.id, !!actualGroupChatIdFromServer);
         return; 
     } 
     
-    // Не показувати сповіщення для власних повідомлень
     if (sender.id === currentUserId) {
-        // console.log("Chat Notification suppressed: message is from current user (chat_script.js).");
         return;
     }
 
@@ -210,8 +195,7 @@ async function initializeChat() {
                 currentUsername = result.username;
                 currentUserId = userData.userId;
 
-                updateChatHeaderUIForLoggedInUser(currentUsername); // Use chat-specific UI update
-                // localStorage items are likely set by script.js, but good to ensure consistency
+                updateChatHeaderUIForLoggedInUser(currentUsername);
                 localStorage.setItem('isLoggedIn', 'true');
                 localStorage.setItem('username', currentUsername); 
                 
@@ -219,14 +203,13 @@ async function initializeChat() {
                     username: currentUsername,
                     id: currentUserId
                 });
-                // Inform server of activity on the chat page
                 socket.emit('user_activity', { userId: currentUserId, page: window.location.pathname });
                 
-                socket.emit('get_active_chats'); // Запитуємо список активних чатів
+                socket.emit('get_active_chats'); 
                 
                 setupEventListeners();
                 setupModalEventListeners();
-                updateChatNotificationDotState(); // Initial check for notifications
+                updateChatNotificationDotState(); 
 
                 const urlParams = new URLSearchParams(window.location.search);
                 const chatIdFromUrl = urlParams.get('chat');
@@ -248,7 +231,7 @@ async function initializeChat() {
             updateChatHeaderUIForLoggedOutUser();
             localStorage.removeItem('isLoggedIn');
             localStorage.removeItem('username');
-            window.location.href = '/PI/index.html'; // Redirect if not logged in
+            window.location.href = '/PI/index.html'; 
         }
     } catch (error) {
         console.error('Error initializing chat:', error);
@@ -262,13 +245,11 @@ async function initializeChat() {
 }
 
 socket.on('user_statuses', ({ statuses }) => {
-    // console.log('Chat_script received user_statuses:', statuses);
     userStatuses = statuses;
-    updateUserStatusesUI(); // Changed function name for clarity
+    updateUserStatusesUI(); 
 });
 
 function updateUserStatusesUI() {
-    // console.log("Updating UI with userStatuses from chat_script.js:", JSON.parse(JSON.stringify(userStatuses)));
     document.querySelectorAll('.chat-item[data-chat]').forEach(item => {
         if (item.dataset.isGroup === 'true') return; 
 
@@ -280,10 +261,8 @@ function updateUserStatusesUI() {
             const userDataFromServer = userStatuses[userId];
             const currentStatusString = userDataFromServer && userDataFromServer.status ? userDataFromServer.status : 'offline';
             
-            // console.log(`Chat User ${userId}: currentStatus = ${currentStatusString}, Element:`, statusElement);
-            
-            statusElement.className = 'chat-status'; // Reset classes
-            statusElement.classList.add(`status-${currentStatusString}`); // Add current class e.g. status-online
+            statusElement.className = 'chat-status'; 
+            statusElement.classList.add(`status-${currentStatusString}`); 
             statusElement.textContent = currentStatusString.charAt(0).toUpperCase() + currentStatusString.slice(1);
         }
     });
@@ -291,8 +270,8 @@ function updateUserStatusesUI() {
 
 function renderChatList(chats) {
     const chatItemsContainer = document.getElementById('chatItems');
-    chatItemsContainer.innerHTML = ''; // Очищаємо поточний список
-    activeChatList = chats; // Зберігаємо отриманий список локально
+    chatItemsContainer.innerHTML = ''; 
+    activeChatList = chats; 
 
     if (!chats || chats.length === 0) {
         chatItemsContainer.innerHTML = '<p class="no-chats-message">No active chats yet. Start a new one!</p>';
@@ -337,12 +316,11 @@ function renderChatList(chats) {
                 ${!chat.isGroup ? '<div class="chat-status status-offline">Offline</div>' : ''} 
             </div>
         `;
-        // Статус для індивідуальних чатів буде оновлено updateUserStatusesUI
 
         chatItem.addEventListener('click', () => switchChat(chat.id, chat.isGroup));
         chatItemsContainer.appendChild(chatItem);
     });
-    updateUserStatusesUI(); // Оновлюємо статуси після рендерингу списку чатів
+    updateUserStatusesUI(); 
 }
 
 socket.on('active_chats_list', (chats) => {
@@ -350,12 +328,11 @@ socket.on('active_chats_list', (chats) => {
     renderChatList(chats);
 });
 
-function sendMessageToChat(recipientsIgnored, message) { // Renamed
+function sendMessageToChat(recipientsIgnored, message) { 
     if (!currentUsername || (!currentChat && !currentGroupChat)) {
         console.error('User not authenticated or no chat selected for sending message.');
         return;
     }
-    // Логуємо значення безпосередньо перед використанням
     console.log(`[CHAT_SCRIPT] sendMessageToChat: currentChat=${currentChat}, currentGroupChat=${currentGroupChat}`); 
 
     const messageData = {
@@ -376,7 +353,6 @@ function sendMessageToChat(recipientsIgnored, message) { // Renamed
         return; 
     }
     
-    // Відображаємо повідомлення локально одразу після надсилання
     displayMessageInChat(messageData);
     updateChatPreviewInList(messageData);
     
@@ -384,11 +360,10 @@ function sendMessageToChat(recipientsIgnored, message) { // Renamed
 }
 
 socket.on('new_message', (messageData) => {
-    console.log('[CHAT_SCRIPT] Raw new_message received from server:', JSON.stringify(messageData, null, 2)); // Детальне логування
+    console.log('[CHAT_SCRIPT] Raw new_message received from server:', JSON.stringify(messageData, null, 2)); 
     console.log('[CHAT_SCRIPT] Received new_message (parsed object):', messageData);
     console.log('[CHAT_SCRIPT] Current state: currentUserId:', currentUserId, 'currentChat:', currentChat, 'currentGroupChat:', currentGroupChat);
 
-    // Перевіряємо, чи є дані про відправника
     if (!messageData || !messageData.sender || typeof messageData.sender.id === 'undefined') {
         console.error('[CHAT_SCRIPT] Invalid messageData received (no sender or sender.id):', messageData);
         return;
@@ -415,18 +390,13 @@ socket.on('new_message', (messageData) => {
             showChatNotification(messageData);
         } else {
             console.log('[CHAT_SCRIPT] Message is from another user FOR active chat. Chat updated. Not showing bell notification.');
-            // Якщо повідомлення для активного чату, але від іншого користувача,
-            // сповіщення "дзвіночка" не потрібне, бо користувач бачить повідомлення.
-            // Але, можливо, потрібно очистити старе сповіщення для цього чату, якщо воно було.
+
             clearChatNotificationForSource(messageData.group_chat_id ? messageData.group_chat_id : messageData.sender.id, !!messageData.group_chat_id);
         }
     } else {
         console.log('[CHAT_SCRIPT] Message is from current user. Not showing bell notification.');
-        // Якщо це своє повідомлення (наприклад, з іншої вкладки) і воно для активного чату, displayMessageInChat вже викликано.
-        // Якщо для неактивного, то сповіщення не потрібне.
     }
     
-    // Оновлюємо прев'ю в списку чатів для всіх нових повідомлень
     updateChatPreviewInList(messageData);
 });
 
@@ -437,7 +407,7 @@ socket.on('message_history', (data) => {
     
     if (messages) {
         messages.forEach(msg => {
-            displayMessageInChat({ // Renamed
+            displayMessageInChat({ 
                 sender: {
                     username: msg.sender_name, 
                     id: msg.sender_id
@@ -452,11 +422,11 @@ socket.on('message_history', (data) => {
 });
 
 function displayMessageInChat(messageData) { 
-    const { sender, message, timestamp, groupChatId, group_name } = messageData; // Додано group_name
+    const { sender, message, timestamp, groupChatId, group_name } = messageData; 
     const messagesArea = document.getElementById('messagesArea');
     
     const messageElement = document.createElement('div');
-    messageElement.classList.add('message'); // This is for messages in messagesArea
+    messageElement.classList.add('message'); 
     
     const isOwnMessage = sender.id === currentUserId;
     if (isOwnMessage) {
@@ -464,7 +434,6 @@ function displayMessageInChat(messageData) {
     }
     
     const senderDisplayName = groupChatId && !isOwnMessage ? sender.username : (isOwnMessage ? 'You' : sender.username);
-    // Використовуємо group_name для назви групи в повідомленні, якщо є
     const messageSenderNameContent = groupChatId && !isOwnMessage 
         ? `<div class="message-sender-name">${sender.username} ${group_name ? 'in ' + group_name : ''}</div>` 
         : '';
@@ -491,10 +460,10 @@ function updateChatPreviewInList(messageData) {
     
     let targetId;
     let isGroupChat;
-    let chatNameForUpdate = messageData.group_name; // Використовуємо group_name, якщо воно є (від сервера або локально)
+    let chatNameForUpdate = messageData.group_name; 
 
-    const serverGroupId = messageData.group_chat_id; // snake_case - від сервера (подія 'new_message')
-    const localGroupId = messageData.groupChatId;    // camelCase - коли локально відправляємо повідомлення (з sendMessageToChat)
+    const serverGroupId = messageData.group_chat_id; 
+    const localGroupId = messageData.groupChatId;   
 
     if (serverGroupId) {
         targetId = serverGroupId;
@@ -503,8 +472,6 @@ function updateChatPreviewInList(messageData) {
         targetId = localGroupId;
         isGroupChat = true;
     } else {
-        // Логіка для 1-на-1 чатів
-        // targetId - це ID іншого учасника чату
         if (sender.id === currentUserId && recipients && recipients.length > 0) {
             targetId = recipients[0]; 
         } else {
@@ -525,7 +492,6 @@ function updateChatPreviewInList(messageData) {
         const timeEl = chatItem.querySelector('.chat-time');
         const nameEl = chatItem.querySelector('.chat-name');
 
-        // Оновлюємо назву групи в списку, якщо вона є в messageData і відрізняється
         if (isGroupChat && chatNameForUpdate && nameEl && nameEl.textContent !== chatNameForUpdate) {
             nameEl.textContent = chatNameForUpdate;
         }
@@ -543,16 +509,12 @@ function updateChatPreviewInList(messageData) {
             timeEl.textContent = new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
 
-        // Move chat item to top
         const chatItemsContainer = document.getElementById('chatItems');
         if (chatItemsContainer && chatItemsContainer.firstChild !== chatItem) {
             chatItemsContainer.prepend(chatItem);
         }
     } else {
-        // Якщо чату немає в списку (наприклад, нове повідомлення від нового користувача),
-        // запитуємо оновлений список чатів у сервера.
-        // Це більш надійний спосіб, ніж намагатися додати елемент локально.
-        // console.log('Chat item not found for preview update, requesting full list refresh.');
+        socket.emit('get_active_chats');
         socket.emit('get_active_chats');
     }
 }
@@ -585,7 +547,7 @@ function switchChat(chatOrGroupId, isGroup) {
         }
     }
 
-    // Скидаємо деталі попередньої групи
+ 
     currentGroupDetails = null; 
 
     if (isGroup) {
@@ -593,12 +555,8 @@ function switchChat(chatOrGroupId, isGroup) {
         currentChat = null;
         console.log(`[CHAT_SCRIPT] Switched to GROUP chat. currentGroupChat set to: ${currentGroupChat}`);
         socket.emit('get_chat_history', { groupChatId: chatOrGroupIdStr });
-        // Запитуємо деталі групи, щоб знати, чи показувати кнопки керування
         socket.emit('get_group_chat_details', { groupId: currentGroupChat });
         
-        // Кнопки groupInfoBtn та addMembersToGroupBtn будуть показані/ховані
-        // після отримання відповіді group_chat_details_response і перевірки creator_id
-        // Тут ми їх поки ховаємо, доки не отримаємо дані
         if (groupInfoBtn) groupInfoBtn.style.display = 'none'; 
         if (addMembersBtn) addMembersBtn.style.display = 'none';
 
@@ -634,7 +592,7 @@ function setupEventListeners() {
         const sendMessageHandler = () => {
             const message = messageInput.value.trim();
             if (message && (currentChat || currentGroupChat)) { 
-                sendMessageToChat([], message); // First arg (recipients) is ignored by this func
+                sendMessageToChat([], message); 
                 messageInput.value = '';
             }
         };
@@ -657,23 +615,16 @@ function setupModalEventListeners() {
     if (newChatBtn) {
         newChatBtn.addEventListener('click', async () => {
             try {
-                // Fetch users that current user can chat with (excluding self)
                 const response = await fetch('/PI/api/get_users.php?exclude_self=true'); 
                 const result = await response.json();
                 
                 if (result.success) {
                     const studentList = document.getElementById('studentList');
-                    studentList.innerHTML = ''; // Clear previous list
+                    studentList.innerHTML = ''; 
                     
-                    const usersToDisplay = result.users.filter(user => user.id !== currentUserId); // Заборона чату з самим собою
+                    const usersToDisplay = result.users.filter(user => user.id !== currentUserId); 
 
                     usersToDisplay.forEach(user => {
-                        // Не додаємо користувача до списку, якщо з ним вже є активний чат (крім групових)
-                        // const existingIndividualChat = activeChatList.find(chat => !chat.isGroup && chat.id === user.id);
-                        // if (existingIndividualChat && document.querySelector('.chat-type-option.selected').dataset.type === 'individual') {
-                        // return; 
-                        // } - Цю логіку краще обробляти при створенні чату, а не при завантаженні списку користувачів
-
                         const studentItem = document.createElement('div');
                         studentItem.className = 'student-item';
                         studentItem.dataset.id = user.id;
@@ -699,11 +650,10 @@ function setupModalEventListeners() {
                     document.getElementById('newChatModal').style.display = 'flex';
                 } else {
                     console.error("Failed to load users for new chat:", result.message);
-                    // alert("Could not load users. Please try again.");
+                    
                 }
             } catch (error) {
                 console.error('Error loading users for new chat:', error);
-                // alert("An error occurred while loading users.");
             }
         });
     }
@@ -718,7 +668,7 @@ function setupModalEventListeners() {
             this.classList.add('selected');
             const isGroup = this.dataset.type === 'group';
             toggleChatNameField(isGroup);
-            document.querySelectorAll('#studentList input[type="checkbox"]').forEach(cb => cb.checked = false); // Reset selection on type change
+            document.querySelectorAll('#studentList input[type="checkbox"]').forEach(cb => cb.checked = false); 
             updateStudentSelectionInModal();
         });
     });
@@ -726,14 +676,12 @@ function setupModalEventListeners() {
     const studentSearch = document.getElementById('studentSearch');
     if (studentSearch) studentSearch.addEventListener('input', function() { filterStudentsInModal(this.value); });
 
-    // Event delegation for checkboxes inside studentList
     const studentListModal = document.getElementById('studentList');
     if (studentListModal) {
          studentListModal.addEventListener('change', function(e) {
              if (e.target.matches('input[type="checkbox"]')) {
                  const selectedType = document.querySelector('.chat-type-option.selected');
                  if (selectedType?.dataset.type === 'individual') {
-                     // If individual chat, only one checkbox can be selected
                      document.querySelectorAll('#studentList input[type="checkbox"]').forEach(cb => {
                          if (cb !== e.target) cb.checked = false;
                      });
@@ -741,13 +689,12 @@ function setupModalEventListeners() {
                  updateStudentSelectionInModal();
              }
          });
-         studentListModal.addEventListener('click', function(e) { // Allow clicking whole item
+         studentListModal.addEventListener('click', function(e) { 
              const item = e.target.closest('.student-item');
              if (item) {
                  const checkbox = item.querySelector('input[type="checkbox"]');
                  if (checkbox) {
                      checkbox.checked = !checkbox.checked;
-                     // Manually trigger change event for the logic above
                      const event = new Event('change', { bubbles: true });
                      checkbox.dispatchEvent(event);
                  }
@@ -755,21 +702,17 @@ function setupModalEventListeners() {
          });
     }
 
-    // Обробники для нових кнопок керування групою
+
+    // group information
     const groupInfoBtn = document.getElementById('groupInfoBtn');
     if (groupInfoBtn) {
         groupInfoBtn.addEventListener('click', () => {
             if (currentGroupChat && currentGroupDetails) {
-                // Деталі вже мають бути завантажені в currentGroupDetails через switchChat
-                // або оновлені через socket.on('group_chat_details_response')
                 fillChatInfoModal(currentGroupDetails);
                 document.getElementById('chatInfoModal').style.display = 'flex';
             } else if (currentGroupChat) {
-                // Якщо деталей ще немає, запитуємо їх перед відкриттям модального вікна
                 socket.emit('get_group_chat_details', { groupId: currentGroupChat });
-                // Модальне вікно відкриється після отримання group_chat_details_response
             } else {
-                // alert('Please select a group chat first.');
             }
         });
     }
@@ -781,7 +724,6 @@ function setupModalEventListeners() {
         });
     }
 
-    // Обробники для модального вікна інформації про чат (chatInfoModal)
     const closeChatInfoModal = document.getElementById('closeChatInfoModal');
     const cancelChatInfoBtn = document.getElementById('cancelChatInfoBtn');
     const saveChatInfoBtn = document.getElementById('saveChatInfoBtn');
@@ -795,7 +737,6 @@ function setupModalEventListeners() {
             const newName = editChatNameInput.value.trim();
             if (currentGroupChat && newName && currentGroupDetails && newName !== currentGroupDetails.name) {
                 if (currentGroupDetails.creator_id !== currentUserId) {
-                    // alert('Only the group creator can change the name.');
                     return;
                 }
                 if (newName.length > 0 && newName.length <= 100) {
@@ -804,20 +745,18 @@ function setupModalEventListeners() {
                     document.getElementById('editChatNameError').textContent = 'Name must be 1-100 characters.';
                 }
             } else if (newName === currentGroupDetails?.name) {
-                // No change, just close
                 closeModalAndReset('chatInfoModal');
             } else {
                  document.getElementById('editChatNameError').textContent = 'Please enter a valid name.';
             }
         });
         editChatNameInput.addEventListener('input', () => {
-            document.getElementById('editChatNameError').textContent = ''; // Clear error on input
-            // Можна додати логіку для активації кнопки збереження тільки якщо є зміни
-            // saveChatInfoBtn.disabled = editChatNameInput.value.trim() === currentGroupDetails?.name || !currentGroupDetails || currentGroupDetails.creator_id !== currentUserId;
+            document.getElementById('editChatNameError').textContent = '';
         });
     }
     
-    // Обробники для модального вікна додавання учасників (addMembersModal)
+
+    // add new member
     const closeAddMembersModal = document.getElementById('closeAddMembersModal');
     const cancelAddMembersBtn = document.getElementById('cancelAddMembersBtn');
     const confirmAddMembersBtn = document.getElementById('confirmAddMembersBtn');
@@ -834,7 +773,6 @@ function setupModalEventListeners() {
             if (currentGroupChat && memberIdsToAdd.length > 0) {
                 socket.emit('add_members_to_group', { groupId: currentGroupChat, memberIdsToAdd: memberIdsToAdd });
             } else if (memberIdsToAdd.length === 0) {
-                // alert('Please select users to add.');
             }
         });
     }
@@ -855,13 +793,13 @@ function toggleChatNameField(show) {
     if (chatNameGroup) {
         chatNameGroup.style.display = show ? 'block' : 'none';
         const chatNameInput = document.getElementById('chatName');
-        if (chatNameInput && !show) { // Clear name if field is hidden
+        if (chatNameInput && !show) {
              chatNameInput.value = '';
         }
     }
 }
 
-function updateCreateChatButtonState() { // Renamed
+function updateCreateChatButtonState() { 
     const selectedType = document.querySelector('.chat-type-option.selected');
     if (!selectedType) return;
 
@@ -881,18 +819,17 @@ function updateCreateChatButtonState() { // Renamed
     createBtn.disabled = !canCreate;
 }
 
-function filterStudentsInModal(searchTerm) { // Renamed
+function filterStudentsInModal(searchTerm) { 
     const studentItems = document.querySelectorAll('#studentList .student-item');
     const term = searchTerm.toLowerCase();
     studentItems.forEach(item => {
         const studentName = item.querySelector('.student-name').textContent.toLowerCase();
-        // const studentGroup = item.querySelector('.student-group').textContent.toLowerCase(); // If group is relevant
-        const matches = studentName.includes(term); // || studentGroup.includes(term);
+        const matches = studentName.includes(term);  
         item.style.display = matches ? 'flex' : 'none';
     });
 }
 
-function updateStudentSelectionInModal() { // Renamed
+function updateStudentSelectionInModal() { 
     const selectedCount = document.querySelectorAll('#studentList input[type="checkbox"]:checked').length;
     const countElement = document.getElementById('selectedCount');
     
@@ -908,10 +845,10 @@ function updateStudentSelectionInModal() { // Renamed
         const checkbox = item.querySelector('input[type="checkbox"]');
         item.classList.toggle('selected', checkbox?.checked);
     });
-    updateCreateChatButtonState(); // Renamed
+    updateCreateChatButtonState(); 
 }
 
-function createNewChatFromModal() { // Renamed
+function createNewChatFromModal() { 
     const selectedType = document.querySelector('.chat-type-option.selected');
     if (!selectedType) return;
 
@@ -922,58 +859,49 @@ function createNewChatFromModal() { // Renamed
         }));
     
     if (selectedUsersData.length === 0) {
-        // alert("Please select at least one user.");
         return;
     }
 
     if (selectedType.dataset.type === 'individual') {
         if (selectedUsersData.length === 1) {
             const userToChatWith = selectedUsersData[0];
-            // Перевіряємо, чи вже існує такий індивідуальний чат у списку активних чатів
             const existingChat = activeChatList.find(chat => chat.id === userToChatWith.id && !chat.isGroup);
             
             if (existingChat) {
-                switchChat(userToChatWith.id, false); // Просто переключаємось на існуючий чат
+                switchChat(userToChatWith.id, false); 
             } else {
-                // Якщо чату немає, створюємо "тимчасовий" вигляд
                 console.log(`Creating a new local visual for chat with ${userToChatWith.username} (ID: ${userToChatWith.id})`);
 
-                // 1. Update chat window content
                 const messagesArea = document.getElementById('messagesArea');
                 messagesArea.innerHTML = `<p style="text-align:center; color:#aaa; margin-top:20px;">Starting new chat with ${userToChatWith.username}. Type a message to begin.</p>`;
                 
                 const chatTitle = document.getElementById('chatTitle');
                 chatTitle.textContent = userToChatWith.username;
 
-                // Hide group-specific buttons
                 const addMembersBtn = document.getElementById('addMembersToGroupBtn');
                 const groupInfoBtn = document.getElementById('groupInfoBtn');
                 if (addMembersBtn) addMembersBtn.style.display = 'none';
                 if (groupInfoBtn) groupInfoBtn.style.display = 'none';
 
-                // 2. Update global state
                 currentChat = userToChatWith.id;
                 currentGroupChat = null;
 
-                // 3. Update URL
                 const url = new URL(window.location);
                 url.searchParams.delete('chat');
                 url.searchParams.delete('group_chat');
                 url.searchParams.set('chat', currentChat);
                 window.history.pushState({}, '', url);
 
-                // 4. Manage chat list visuals
                 document.querySelectorAll('.chat-item').forEach(item => item.classList.remove('active'));
 
                 const chatItemsContainer = document.getElementById('chatItems');
-                // Remove old temp chat item if it exists for the same user to avoid duplicates before prepend
                 const existingTempItem = chatItemsContainer.querySelector(`.chat-item[data-chat="${userToChatWith.id}"][data-is-group="false"]`);
                 if (existingTempItem) {
                     existingTempItem.remove();
                 }
 
                 const tempChatItem = document.createElement('div');
-                tempChatItem.className = 'chat-item active'; // Make it active
+                tempChatItem.className = 'chat-item active'; 
                 tempChatItem.dataset.chat = userToChatWith.id.toString();
                 tempChatItem.dataset.isGroup = "false";
                 const avatarLetter = userToChatWith.username ? userToChatWith.username[0].toUpperCase() : '?';
@@ -992,49 +920,33 @@ function createNewChatFromModal() { // Renamed
                 tempChatItem.addEventListener('click', () => switchChat(userToChatWith.id, false));
                 chatItemsContainer.prepend(tempChatItem);
                 
-                updateUserStatusesUI(); // Attempt to update its status if info is available
+                updateUserStatusesUI(); 
                 clearChatNotificationForSource(userToChatWith.id, false);
             }
         }
-    } else { // Group chat
+    } else { 
         const chatName = document.getElementById('chatName').value.trim();
         if (chatName && selectedUsersData.length > 0) {
             const memberIds = selectedUsersData.map(user => user.id);
-            // Current user is added on the server if not already in memberIds
             socket.emit('create_group_chat', {
                 name: chatName,
-                members: [...memberIds, currentUserId] // Ensure current user is part of the member list sent
+                members: [...memberIds, currentUserId] 
             });
         } else if (!chatName) {
-            // alert("Please enter a name for the group chat.");
             return;
         }
     }
     closeModalAndReset('newChatModal');
 }
 
-socket.on('group_chat_created', (groupData) => { // Цей обробник може бути застарілим, якщо сервер надсилає group_chat_creation_success
-    // console.log('Received group_chat_created, but this might be deprecated. GroupData:', groupData);
-    // Список чатів тепер оновлюється через 'active_chats_list' або 'group_chat_creation_success'
-    // socket.emit('get_active_chats'); // Запитуємо оновлений список
-    // if(groupData && groupData.id) {
-    // switchChat(groupData.id, true);
-    // if(groupData.message) displayMessageInChat(groupData.message);
-    // }
-});
+// socket.on('group_chat_created', (groupData) => { 
+// });
 
 socket.on('group_chat_creation_success', (newGroup) => {
     console.log("Group chat creation successful on client:", newGroup);
-    // Сервер вже надішле оновлений список чатів через notifyUsersToUpdateChatList,
-    // але ми можемо одразу переключитися на новостворену групу.
     if (newGroup && newGroup.id) {
-        // Можливо, варто дочекатися оновлення списку з active_chats_list, щоб уникнути мерехтіння
-        // Або, якщо сервер гарантує, що newGroup містить всю потрібну інфу для відображення:
         switchChat(newGroup.id, true);
-        // Можна додати новий елемент до activeChatList локально, а потім він оновить його з сервера.
-        // Це може покращити UX, але потребує обережності, щоб не було розсинхронізації.
     }
-    // Запит на оновлення списку чатів вже був ініційований сервером, тому тут не потрібен.
 });
 
 function closeModalAndReset(modalId) { // Renamed
@@ -1053,11 +965,10 @@ function closeModalAndReset(modalId) { // Renamed
         const studentSearchInput = document.getElementById('studentSearch');
         if (studentSearchInput) {
             studentSearchInput.value = '';
-            filterStudentsInModal(''); // Reset filter
+            filterStudentsInModal(''); 
         }
-        updateStudentSelectionInModal(); // Update count display and button state
+        updateStudentSelectionInModal(); 
         
-        // Reset chat type to individual by default
         document.querySelectorAll('.chat-type-option').forEach(opt => opt.classList.remove('selected'));
         const individualOption = document.querySelector('.chat-type-option[data-type="individual"]');
         if (individualOption) individualOption.classList.add('selected');
@@ -1068,13 +979,11 @@ function closeModalAndReset(modalId) { // Renamed
 socket.on('group_chat_details_response', (data) => {
     console.log('[CHAT_SCRIPT] Received group_chat_details_response:', data);
     if (data.error) {
-        // alert(`Error fetching group details: ${data.error}`);
-        currentGroupDetails = null; // Скидаємо, якщо помилка
+        currentGroupDetails = null; 
     } else {
-        currentGroupDetails = data; // Зберігаємо деталі групи
+        currentGroupDetails = data; 
     }
-    updateGroupActionButtonsVisibility(); // Оновлюємо видимість кнопок
-    // Якщо модальне вікно chatInfoModal очікувало ці дані для відкриття
+    updateGroupActionButtonsVisibility(); 
     const chatInfoModal = document.getElementById('chatInfoModal');
     if (chatInfoModal.dataset.waitingForDetails === 'true' && currentGroupDetails && !data.error) {
         fillChatInfoModal(currentGroupDetails);
@@ -1086,12 +995,10 @@ socket.on('group_chat_details_response', (data) => {
 socket.on('group_chat_update_response', (data) => {
     console.log('[CHAT_SCRIPT] Received group_chat_update_response:', data);
     if (data.error) {
-        // alert(`Error updating group: ${data.error}`);
     } else if (data.success) {
-        // alert(`Group updated successfully! New name: ${data.newName}`);
         if (data.groupDetails && currentGroupChat === data.groupDetails.id) {
             currentGroupDetails = data.groupDetails;
-            updateGroupActionButtonsVisibility(); // Оновлюємо кнопки, якщо змінився творець (малоймовірно, але для консистентності)
+            updateGroupActionButtonsVisibility(); 
             const chatTitle = document.getElementById('chatTitle');
             if (chatTitle) chatTitle.textContent = data.newName;
             const chatItemName = document.querySelector(`.chat-item[data-chat="${data.groupDetails.id}"][data-is-group="true"] .chat-name`);
@@ -1099,7 +1006,7 @@ socket.on('group_chat_update_response', (data) => {
         }
         const chatInfoModal = document.getElementById('chatInfoModal');
         if (chatInfoModal.style.display === 'flex' && currentGroupDetails) {
-            fillChatInfoModal(currentGroupDetails); // Оновлюємо дані в модалці, якщо вона відкрита
+            fillChatInfoModal(currentGroupDetails); 
         }
     }
 });
@@ -1107,9 +1014,7 @@ socket.on('group_chat_update_response', (data) => {
 socket.on('group_members_update_response', (data) => {
     console.log('[CHAT_SCRIPT] Received group_members_update_response:', data);
     if (data.error) {
-        // alert(`Error updating group members: ${data.error}`);
     } else if (data.success) {
-        // alert(data.message || 'Group members updated successfully!');
         if (data.groupDetails && currentGroupChat === data.groupDetails.id) {
             currentGroupDetails = data.groupDetails;
             updateGroupActionButtonsVisibility();
@@ -1144,25 +1049,20 @@ socket.on('group_chat_updated', (updatedGroupDetails) => {
 socket.on('group_chat_removed_or_left', ({ groupId }) => {
     console.log(`[CHAT_SCRIPT] Current user removed from group ${groupId} or left.`);
     if (currentGroupChat === groupId) {
-        // Якщо поточний активний чат - це група, з якої користувача видалили / він вийшов
         currentGroupChat = null;
         currentGroupDetails = null;
-        updateGroupActionButtonsVisibility(); // Сховає кнопки
+        updateGroupActionButtonsVisibility(); 
         document.getElementById('chatTitle').textContent = 'Select a chat';
         document.getElementById('messagesArea').innerHTML = '<p style="text-align:center; color:#aaa; margin-top:20px;">You are no longer a member of this group.</p>';
         document.getElementById('groupInfoBtn').style.display = 'none';
         document.getElementById('addMembersToGroupBtn').style.display = 'none';
-        // Оновити URL, якщо потрібно
         const url = new URL(window.location);
         url.searchParams.delete('group_chat');
         window.history.pushState({}, '', url);
     }
-    // Запит на оновлення списку активних чатів, щоб група зникла
     socket.emit('get_active_chats');
-    // alert('You have been removed from a group or have left a group.');
 });
 
-// Функція для заповнення модального вікна інформації про групу
 function fillChatInfoModal(groupDetails) {
     if (!groupDetails) {
         console.error("fillChatInfoModal: groupDetails is null or undefined");
@@ -1177,15 +1077,14 @@ function fillChatInfoModal(groupDetails) {
 
     editChatNameInput.value = groupDetails.name;
     chatMemberCountSpan.textContent = groupDetails.members.length;
-    chatMembersListDiv.innerHTML = ''; // Очищаємо попередній список
+    chatMembersListDiv.innerHTML = ''; 
 
     const isCurrentUserCreator = groupDetails.creator_id === currentUserId;
     editChatNameInput.disabled = !isCurrentUserCreator;
-    // saveChatInfoBtn.disabled = !isCurrentUserCreator; // Кнопка збереження активна, якщо є зміни
 
     groupDetails.members.forEach(member => {
         const memberItem = document.createElement('div');
-        memberItem.className = 'student-item'; // Використовуємо той самий стиль
+        memberItem.className = 'student-item'; 
         memberItem.dataset.userId = member.id;
 
         let memberRole = '';
@@ -1225,14 +1124,11 @@ function fillChatInfoModal(groupDetails) {
     chatInfoModal.style.display = 'flex';
 }
 
-// Функція для відкриття та заповнення модального вікна додавання учасників
 async function openAddMembersModal() {
     if (!currentGroupChat || !currentGroupDetails) {
-        // alert('Please select a group chat first.');
         return;
     }
     if (currentGroupDetails.creator_id !== currentUserId) {
-        // alert('Only the group creator can add new members.');
         return;
     }
 
@@ -1248,7 +1144,7 @@ async function openAddMembersModal() {
     searchInput.value = '';
 
     try {
-        const response = await fetch('/PI/api/get_users.php?exclude_self=false'); // отримуємо всіх, крім себе, якщо треба
+        const response = await fetch('/PI/api/get_users.php?exclude_self=false'); 
         const result = await response.json();
         if (result.success) {
             membersListDiv.innerHTML = '';
@@ -1262,7 +1158,7 @@ async function openAddMembersModal() {
 
             usersToAdd.forEach(user => {
                 const userItem = document.createElement('div');
-                userItem.className = 'student-item'; // той самий стиль
+                userItem.className = 'student-item'; 
                 userItem.innerHTML = `
                     <input type="checkbox" id="add_user_${user.id}" data-user-id="${user.id}">
                     <div class="student-avatar">${(user.username || 'U')[0].toUpperCase()}</div>
@@ -1278,12 +1174,11 @@ async function openAddMembersModal() {
                     document.getElementById('addMemberSelectedCount').textContent = `Selected: ${selectedCount} user(s)`;
                     document.getElementById('addMemberSelectedCount').style.display = selectedCount > 0 ? 'block' : 'none';
                 });
-                 // Дозволити клік по всьому елементу для вибору
                 userItem.addEventListener('click', function(e) {
                     if (e.target.type !== 'checkbox') {
                         const checkbox = this.querySelector('input[type="checkbox"]');
                         checkbox.checked = !checkbox.checked;
-                        checkbox.dispatchEvent(new Event('change')); // тригер для оновлення кнопки
+                        checkbox.dispatchEvent(new Event('change')); 
                     }
                 });
             });
@@ -1302,7 +1197,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     console.log("Chat script DOMContentLoaded, initializing chat...");
     await initializeChat(); 
 
-    // Bell click handler in chat_script.js for messages.html context
     const bellInHeader = document.querySelector('header .notification .bell');
     if (bellInHeader) {
         bellInHeader.addEventListener('click', function (e) {
@@ -1311,15 +1205,10 @@ document.addEventListener('DOMContentLoaded', async function() {
                 alert('Please log in to view messages.');
                 return;
             }
-            // On messages.html, clicking the bell toggles the notification dropdown
-            // The global script.js handles navigation from other pages.
             if (window.location.pathname.endsWith('messages.html')) {
-                e.preventDefault(); // Prevent navigation if it's an <a> tag
+                e.preventDefault(); 
                 const bmodal = document.querySelector('#notification .bmodal');
                 if (bmodal) {
-                    // A simple toggle, or it could be handled by CSS hover/focus
-                    // bmodal.style.display = bmodal.style.display === 'block' ? 'none' : 'block';
-                    // The existing CSS for .notification:hover .bmodal might handle this
                 }
             }
         });

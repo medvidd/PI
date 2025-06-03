@@ -6,11 +6,11 @@ const groupChatSchema = new mongoose.Schema({
         required: true,
         trim: true
     },
-    creator_id: { // ID користувача з вашої MySQL таблиці users
+    creator_id: { 
         type: Number,
         required: true
     },
-    members: [{ // Масив ID користувачів з вашої MySQL таблиці users
+    members: [{ 
         type: Number,
         required: true
     }],
@@ -20,7 +20,6 @@ const groupChatSchema = new mongoose.Schema({
     }
 });
 
-// Індекси для оптимізації
 groupChatSchema.index({ members: 1 });
 groupChatSchema.index({ creator_id: 1 });
 
