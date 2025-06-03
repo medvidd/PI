@@ -1,25 +1,21 @@
 /* jshint esversion: 6 */
 
-let globalPageSocket; // Змінено ім'я змінної
-let globalCurrentUserId = null; // Для збереження ID поточного користувача на глобальному рівні
+let globalPageSocket; 
+let globalCurrentUserId = null; 
 
-// Перевіряємо, чи ми НЕ на сторінці messages.html, щоб ініціалізувати глобальний сокет
 if (typeof io !== 'undefined' && !window.location.pathname.endsWith('messages.html')) {
     try {
         globalPageSocket = io('http://localhost:3000');
         console.log('Socket.IO успішно підключено (script.js - globalPageSocket)');
 
-        // Слухаємо подію new_message тільки якщо це globalPageSocket
         globalPageSocket.on('new_message', (messageData) => {
             console.log('script.js (global) received new_message:', messageData);
             if (messageData && messageData.sender && messageData.sender.id !== globalCurrentUserId) {
-                showGlobalNotification(messageData); // Нова функція для показу сповіщень на інших сторінках
+                showGlobalNotification(messageData); 
             }
         });
 
         globalPageSocket.on('user_statuses', ({ statuses }) => {
-            // console.log('Global script received user_statuses:', statuses);
-            // Тут можна додати логіку для оновлення статусів, якщо це потрібно на інших сторінках
         });
 
         globalPageSocket.on('connect_error', (err) => {
@@ -43,7 +39,6 @@ let currentPage = 1;
 let totalPages = 1;
 let selectedStudentIds = [];
 
-// Допоміжна функція для оновлення стану червоної крапки
 function updateNotificationDotState() {
     const notificationContainer = document.getElementById('notification');
     if (!notificationContainer) return;
@@ -61,9 +56,8 @@ function updateNotificationDotState() {
     }
 }
 
-// Функція показу сповіщень
 function showNotification(messageData) {
-    const { sender, message, groupChatId, groupName } = messageData; // Додано groupName
+    const { sender, message, groupChatId, groupName } = messageData; 
     const notificationContainer = document.getElementById('notification');
     if (!notificationContainer) return;
 
@@ -126,7 +120,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     console.log("Hello from script.js!");
     await checkLoginStatus();
     initializeAuthHandlers();
-    updateGlobalNotificationDotState(); // Використовуємо оновлену функцію
+    updateGlobalNotificationDotState(); 
 
     const notificationBell = document.querySelector('.notification .bell');
     const notificationDot = document.querySelector('.notification .notification-dot'); // Для обробки кліку на дзвінок
@@ -138,8 +132,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 alert('Please log in to view messages.');
                 return;
             }
-            // Крапку не видаляємо тут, це робиться при відкритті чату або кліку на сповіщення
-            // if (notificationDot) notificationDot.classList.remove('active');
+            
             setTimeout(function () {
                 window.location.href = 'messages.html';
             }, 300);
@@ -186,14 +179,12 @@ document.addEventListener('DOMContentLoaded', async function () {
     if (localStorage.getItem('isLoggedIn') === 'true') {
         const username = localStorage.getItem('username');
         try {
-            // Повторно отримуємо ID користувача, оскільки він міг змінитися або сесія могла закінчитися
             const userResponse = await fetch('/PI/api/get_user_id.php', { headers: { 'Cache-Control': 'no-cache' }});
             const userData = await userResponse.json();
             if (userData.success && userData.userId) {
                 globalCurrentUserId = userData.userId;
                 updateHeaderUI(username);
             } else {
-                // Якщо не вдалося отримати ID, вважаємо, що користувач не залогінений
                 localStorage.removeItem('isLoggedIn');
                 localStorage.removeItem('username');
                 updateHeaderUIForLoggedOutUser();
@@ -216,15 +207,13 @@ document.addEventListener('DOMContentLoaded', async function () {
                 alert('Please log in to view messages.');
                 return;
             }
-            // Якщо ми не на сторінці повідомлень, переходимо на неї
             if (!window.location.pathname.endsWith('messages.html')) {
-                e.preventDefault(); // Запобігаємо стандартній дії, якщо це посилання
+                e.preventDefault(); 
                 window.location.href = '/PI/messages.html';
             }
-            // На messages.html, ця логіка не потрібна, бо там керує chat_script.js
         });
     }
-    updateNotificationDotState(); // Початкове оновлення стану крапки
+    updateNotificationDotState(); 
 });
 
 //============================ AUTHORIZATION =============================
